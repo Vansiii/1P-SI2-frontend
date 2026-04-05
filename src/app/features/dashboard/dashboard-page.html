@@ -1,0 +1,32 @@
+<main class="dashboard-layout">
+  <header class="dashboard-header">
+    <div class="dashboard-title">
+      <h1>Panel de Control</h1>
+      <p>Gesti�n de emergencias: {{ user()?.workshop_name }}</p>
+    </div>
+    
+    <button type="button" class="logout-btn" (click)="logout()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+        <polyline points="16 17 21 12 16 7"></polyline>
+        <line x1="21" y1="12" x2="9" y2="12"></line>
+      </svg>
+      Cerrar Sesi�n
+    </button>
+  </header>
+
+  <section class="stats-grid">
+    <article class="stat-card featured">
+      <h3>Emergencias Activas</h3>
+      <div class="stat-value">0</div>
+    </article>
+    <article class="stat-card">
+      <h3>Servicios Completados</h3>
+      <div class="stat-value">0</div>
+    </article>
+    <article class="stat-card">
+      <h3>Calificaci�n (Promedio)</h3>
+      <div class="stat-value">--</div>
+    </article>
+  </section>
+</main>

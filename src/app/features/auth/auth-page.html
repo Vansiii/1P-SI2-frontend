@@ -1,0 +1,170 @@
+<main class="auth-layout">
+  <!-- Left Side: Interactive Branding Visualizer -->
+  <aside class="brand-panel">
+    <div class="brand-mesh"></div>
+    <div class="brand-content">
+      <div class="brand-logo">
+        <!-- SVG icon matching industrial/car theme -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+        <span>Examen 1P // Auth</span>
+      </div>
+      <div>
+        <h1 class="brand-heading">Gestión Operativa para<br />Talleres Mecánicos.</h1>
+        <p class="brand-subtitle">Conecta con los conductores en tiempo real. Responde a emergencias al instante y maximiza la rentabilidad de tus servicios con herramientas fluidas, simples y rápidas.</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Side: The Forms -->
+  <section class="form-panel">
+    <div class="form-container">
+      
+      <header class="form-header">
+        <h2 class="auth-title">
+          @if (mode() === 'login') {
+            Bienvenido de vuelta
+          } @else {
+            Asocia tu taller hoy
+          }
+        </h2>
+        <p class="auth-helper">
+          @if (mode() === 'login') {
+            Ingresa los datos de tu cuenta para comenzar.
+          } @else {
+            Crea una cuenta gratuita e impulsa tu negocio.
+          }
+        </p>
+      </header>
+
+      <!-- Advanced Mode Switch Tabs -->
+      <nav class="mode-tabs" aria-label="Selector de modo" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="mode() === 'login'"
+          [class.active]="mode() === 'login'"
+          (click)="setMode('login')"
+        >
+          Iniciar sesión
+        </button>
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="mode() === 'register'"
+          [class.active]="mode() === 'register'"
+          (click)="setMode('register')"
+        >
+          Crear cuenta
+        </button>
+        <div class="tab-indicator" [class.tab-right]="mode() === 'register'"></div>
+      </nav>
+
+      @if (errorMessage()) {
+        <div class="alert-banner" role="alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <p>{{ errorMessage() }}</p>
+        </div>
+      }
+
+      @if (mode() === 'login') {
+        <form class="auth-form" [formGroup]="loginForm" (ngSubmit)="submitLogin()">
+          <div class="form-group">
+            <label for="login-email">Correo Electrónico</label>
+            <div class="input-wrapper">
+              <input id="login-email" type="email" formControlName="email" placeholder="contacto@taller.com" autocomplete="username"/>
+            </div>
+            @if (loginForm.controls.email.touched && loginForm.controls.email.invalid) {
+              <span class="field-error">Ingresa un correo electrónico válido.</span>
+            }
+          </div>
+
+          <div class="form-group">
+            <label for="login-password">Contraseña</label>
+            <div class="input-wrapper">
+              <input id="login-password" type="password" formControlName="password" placeholder="Tu clave de acceso" autocomplete="current-password"/>
+            </div>
+            @if (loginForm.controls.password.touched && loginForm.controls.password.invalid) {
+              <span class="field-error">La contraseña debe tener al menos 8 caracteres.</span>
+            }
+          </div>
+
+          <button type="submit" class="submit-btn" [disabled]="isSubmitting()">
+            @if (isSubmitting()) {
+              <span class="spinner"></span> 
+              Verificando...
+            } @else {
+              Entrar al panel
+            }
+          </button>
+        </form>
+      } @else {
+        <form class="auth-form" [formGroup]="registerForm" (ngSubmit)="submitRegister()">
+          
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="register-workshop">Nombre del taller</label>
+              <div class="input-wrapper">
+                <input id="register-workshop" type="text" formControlName="workshop_name" placeholder="Ej: Motors 360" />
+              </div>
+              @if (registerForm.controls.workshop_name.touched && registerForm.controls.workshop_name.invalid) {
+                <span class="field-error">Obligatorio, min. 3 caracteres.</span>
+              }
+            </div>
+
+            <div class="form-group">
+              <label for="register-owner">Mecánico Jefe</label>
+              <div class="input-wrapper">
+                <input id="register-owner" type="text" formControlName="owner_name" placeholder="Nombre completo" />
+              </div>
+              @if (registerForm.controls.owner_name.touched && registerForm.controls.owner_name.invalid) {
+                <span class="field-error">Obligatorio, min. 3 caracteres.</span>
+              }
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="register-email">Correo Electrónico</label>
+              <div class="input-wrapper">
+                <input id="register-email" type="email" formControlName="email" placeholder="correo@taller.com" />
+              </div>
+              @if (registerForm.controls.email.touched && registerForm.controls.email.invalid) {
+                <span class="field-error">Formato incorrecto.</span>
+              }
+            </div>
+
+            <div class="form-group">
+              <label for="register-phone">Teléfono de contacto</label>
+              <div class="input-wrapper">
+                <input id="register-phone" type="tel" formControlName="phone" placeholder="+591 ..." />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="register-password">Crea tu Contraseña</label>
+            <div class="input-wrapper">
+              <input id="register-password" type="password" formControlName="password" placeholder="Mínimo 8 caracteres" />
+            </div>
+            @if (registerForm.controls.password.touched && registerForm.controls.password.invalid) {
+              <span class="field-error">Debes usar al menos 8 caracteres seguros.</span>
+            }
+          </div>
+
+          <button type="submit" class="submit-btn" [disabled]="isSubmitting()">
+            @if (isSubmitting()) {
+              <span class="spinner"></span> 
+              Configurando cuenta...
+            } @else {
+              Comenzar a operar
+            }
+          </button>
+        </form>
+      }
+    </div>
+  </section>
+</main>

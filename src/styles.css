@@ -1,1 +1,49 @@
-/* You can add global styles to this file, and also import other style files */
+@import '@fontsource/outfit/400.css';
+@import '@fontsource/outfit/500.css';
+@import '@fontsource/outfit/600.css';
+@import '@fontsource/outfit/700.css';
+@import '@fontsource/dm-sans/400.css';
+@import '@fontsource/dm-sans/500.css';
+@import '@fontsource/dm-sans/700.css';
+
+:root {
+  /* Minimalist modern palette with Deep Orange */
+  --primary: #f97316; /* Tailwind Orange 500 */
+  --primary-hover: #ea580c; /* Tailwind Orange 600 */
+  --primary-subtle: #ffedd5;
+  --base-bg: #fdfdfd;
+  --surface: #ffffff;
+  --border-light: #e5e7eb;
+  --border-focus: #c2410c;
+  --text-main: #111827;
+  --text-muted: #6b7280;
+  --error: #ef4444;
+  
+  --font-display: 'Outfit', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-primary: 0 4px 14px 0 rgba(249, 115, 22, 0.39);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100dvh;
+  width: 100%;
+  font-family: var(--font-body);
+  color: var(--text-main);
+  background-color: var(--base-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
