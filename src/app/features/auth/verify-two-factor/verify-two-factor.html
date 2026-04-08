@@ -1,0 +1,76 @@
+<div class="auth-minimal-content">
+  <header class="form-header text-center">
+    <h2 class="auth-title">Autenticación 2FA</h2>
+    <p class="auth-helper">
+      Ingresa el código de 6 dígitos enviado a<br/>
+      <strong>{{ email() || 'tu correo registrado' }}</strong>
+    </p>
+  </header>
+
+  <div class="otp-timer-container" [class.expired]="isOtpExpired() || attemptsExhausted()" aria-live="polite">
+    @if (attemptsExhausted()) {
+      <span class="text-error font-medium">Has agotado los intentos. El código fue bloqueado, solicita uno nuevo</span>
+    } @else if (isOtpExpired()) {
+      <span class="text-error font-medium">El código ha expirado. Solicita uno nuevo</span>
+    } @else {
+      <span class="text-muted">Código vigente: <strong style="color: var(--text-main);">{{ otpTimeLabel() }}</strong></span>
+    }
+  </div>
+
+  @if (errorMessage()) {
+    <div class="alert-banner" role="alert">
+      <p>{{ errorMessage() }}</p>
+    </div>
+  }
+
+  @if (infoMessage()) {
+    <div class="alert-banner success" role="status">
+      <p>{{ infoMessage() }}</p>
+    </div>
+  }
+
+  <form class="auth-form" [formGroup]="verifyForm" (ngSubmit)="submitVerify()">
+    <div class="form-group text-center">
+      <app-otp-input 
+        [length]="6"
+        [disabled]="isSubmitting() || !canVerify()"
+        [error]="verifyForm.controls.twoFaCode.touched ? verifyForm.controls.twoFaCode.invalid : false"
+        (codeChange)="verifyForm.controls.twoFaCode.setValue($event); verifyForm.controls.twoFaCode.markAsTouched()"
+        (codeComplete)="canVerify() ? submitVerify() : null"
+      ></app-otp-input>
+
+      @if (verifyForm.controls.twoFaCode.touched && verifyForm.controls.twoFaCode.invalid) {
+        <span class="field-error" style="display: block; margin-top: -0.5rem; margin-bottom: 1rem;">
+          Ingresa los 6 dígitos numéricos.
+        </span>
+      }
+    </div>
+
+    <button type="submit" class="submit-btn" [disabled]="isSubmitting() || verifyForm.invalid || !canVerify()">
+      @if (isSubmitting()) {
+        <span class="spinner"></span> Verificando...
+      } @else {
+        Verificar código
+      }
+    </button>
+
+    <button
+      type="button"
+      class="ghost-btn secondary-action"
+      [disabled]="isResending() || resendCooldown() > 0"
+      (click)="resendCode()"
+    >
+      @if (isResending()) {
+        <span class="spinner"></span> Reenviando...
+      } @else if (resendCooldown() > 0) {
+        Reenviar en {{ resendCooldown() }}s
+      } @else {
+        No recibí el código. Reenviar
+      }
+    </button>
+
+    <div class="back-link-row text-center mt-4">
+      <a routerLink="/auth" class="back-link" style="color: var(--text-muted); text-decoration: none;">&larr; Volver al inicio de sesión</a>
+    </div>
+  </form>
+</div>

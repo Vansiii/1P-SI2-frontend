@@ -1,0 +1,471 @@
+<main class="home-page">
+  <!-- Floating Navigation -->
+  <header class="floating-nav">
+    <div class="nav-container">
+      <a class="brand" routerLink="/">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+        </div>
+        <div class="brand-content">
+          <span class="brand-text">Sistema de Talleres</span>
+          <span class="brand-subtitle">Gestión Profesional</span>
+        </div>
+      </a>
+
+      <nav class="nav-links" aria-label="Navegación principal">
+        <a routerLink="/" class="nav-link active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          <span>Inicio</span>
+        </a>
+        @if (!isAuthenticated()) {
+          <a routerLink="/auth" class="nav-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+              <polyline points="10 17 15 12 10 7"/>
+              <line x1="15" y1="12" x2="3" y2="12"/>
+            </svg>
+            <span>Ingresar</span>
+          </a>
+        }
+        @if (isAuthenticated()) {
+          <a routerLink="/dashboard" class="nav-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7"/>
+              <rect x="14" y="3" width="7" height="7"/>
+              <rect x="14" y="14" width="7" height="7"/>
+              <rect x="3" y="14" width="7" height="7"/>
+            </svg>
+            <span>Dashboard</span>
+          </a>
+          <a routerLink="/profile" class="nav-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <span>Perfil</span>
+          </a>
+        }
+      </nav>
+
+      <a class="btn-nav-cta" [routerLink]="homeActionLink()">
+        <span>{{ homeActionText() }}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="hero-background">
+      <div class="hero-shape shape-1"></div>
+      <div class="hero-shape shape-2"></div>
+      <div class="hero-shape shape-3"></div>
+    </div>
+
+    <div class="hero-container">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="badge-pulse"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>Plataforma segura y confiable</span>
+        </div>
+
+        <h1 class="hero-title">
+          Transforma la gestión de tu
+          <span class="gradient-text">taller mecánico</span>
+        </h1>
+
+        <p class="hero-subtitle">
+          Sistema completo de gestión con autenticación de doble factor, control de perfiles, 
+          geolocalización y seguimiento en tiempo real. Todo lo que necesitas en una sola plataforma.
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn-hero-primary" [routerLink]="homeActionLink()">
+            <span>{{ homeActionText() }}</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+          @if (!isAuthenticated()) {
+            <a class="btn-hero-secondary" routerLink="/auth/forgot-password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>¿Problemas de acceso?</span>
+            </a>
+          }
+        </div>
+
+        <!-- Trust Indicators -->
+        <div class="trust-indicators">
+          <div class="trust-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span>Seguridad 2FA</span>
+          </div>
+          <div class="trust-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span>Multi-plataforma</span>
+          </div>
+          <div class="trust-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span>Tiempo real</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Dashboard Preview -->
+      <aside class="hero-visual">
+        <div class="dashboard-preview">
+          <div class="preview-header">
+            <div class="preview-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div class="preview-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"/>
+                <rect x="14" y="3" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/>
+              </svg>
+              <span>Panel de Control</span>
+            </div>
+          </div>
+
+          <div class="preview-content">
+            <!-- Status Card -->
+            <div class="status-card-preview">
+              <div class="status-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+              </div>
+              <div class="status-info">
+                <p class="status-label">Estado del sistema</p>
+                <p class="status-value">
+                  <span class="status-dot"></span>
+                  Operativo
+                </p>
+              </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="quick-stats">
+              <div class="quick-stat">
+                <div class="stat-icon-small">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                </div>
+                <div>
+                  <p class="stat-label">Seguridad</p>
+                  <p class="stat-value">JWT + 2FA</p>
+                </div>
+              </div>
+
+              <div class="quick-stat">
+                <div class="stat-icon-small">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                  </svg>
+                </div>
+                <div>
+                  <p class="stat-label">Usuarios</p>
+                  <p class="stat-value">Gestión completa</p>
+                </div>
+              </div>
+
+              <div class="quick-stat">
+                <div class="stat-icon-small">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                </div>
+                <div>
+                  <p class="stat-label">Ubicación</p>
+                  <p class="stat-value">GPS activo</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Feature Pills -->
+            <div class="feature-pills">
+              <div class="feature-pill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                </svg>
+                <span>Responsive</span>
+              </div>
+              <div class="feature-pill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 1v6m0 6v6"/>
+                </svg>
+                <span>Sesiones</span>
+              </div>
+              <div class="feature-pill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                </svg>
+                <span>FastAPI</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features-section">
+    <div class="features-container">
+      <div class="section-header">
+        <div class="section-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+            <polyline points="2 17 12 22 22 17"/>
+            <polyline points="2 12 12 17 22 12"/>
+          </svg>
+          <span>Características</span>
+        </div>
+        <h2>Todo lo que necesitas en un solo lugar</h2>
+        <p>Herramientas profesionales para gestionar tu taller de forma eficiente y segura</p>
+      </div>
+
+      <div class="features-grid">
+        <article class="feature-card">
+          <div class="feature-icon-wrapper">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <div class="feature-glow"></div>
+          </div>
+          <h3>Autenticación segura</h3>
+          <p>Sistema de login con JWT y verificación de doble factor por email. Protección máxima para tu cuenta y datos sensibles.</p>
+          <div class="feature-tags">
+            <span class="feature-tag">JWT</span>
+            <span class="feature-tag">2FA</span>
+            <span class="feature-tag">OTP</span>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <div class="feature-icon-wrapper">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <div class="feature-glow"></div>
+          </div>
+          <h3>Gestión de perfiles</h3>
+          <p>Administra información del taller, ubicación, cobertura y datos de contacto. Actualización en tiempo real.</p>
+          <div class="feature-tags">
+            <span class="feature-tag">Perfiles</span>
+            <span class="feature-tag">Edición</span>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <div class="feature-icon-wrapper">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+            </div>
+            <div class="feature-glow"></div>
+          </div>
+          <h3>Geolocalización</h3>
+          <p>Registra la ubicación exacta de tu taller y define tu radio de cobertura con mapas interactivos integrados.</p>
+          <div class="feature-tags">
+            <span class="feature-tag">GPS</span>
+            <span class="feature-tag">Mapas</span>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <div class="feature-icon-wrapper">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+              </svg>
+            </div>
+            <div class="feature-glow"></div>
+          </div>
+          <h3>Control de sesiones</h3>
+          <p>Visualiza todas tus sesiones activas y revócalas remotamente desde cualquier dispositivo para mayor seguridad.</p>
+          <div class="feature-tags">
+            <span class="feature-tag">Sesiones</span>
+            <span class="feature-tag">Seguridad</span>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <div class="feature-icon-wrapper">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              </svg>
+            </div>
+            <div class="feature-glow"></div>
+          </div>
+          <h3>API REST moderna</h3>
+          <p>Backend construido con FastAPI y PostgreSQL. Alto rendimiento, escalabilidad y documentación automática.</p>
+          <div class="feature-tags">
+            <span class="feature-tag">FastAPI</span>
+            <span class="feature-tag">PostgreSQL</span>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <div class="feature-icon-wrapper">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+              </svg>
+            </div>
+            <div class="feature-glow"></div>
+          </div>
+          <h3>Multi-plataforma</h3>
+          <p>Interfaz responsive optimizada para desktop, tablet y móvil. Experiencia consistente en todos los dispositivos.</p>
+          <div class="feature-tags">
+            <span class="feature-tag">Web</span>
+            <span class="feature-tag">Móvil</span>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <div class="cta-container">
+      <div class="cta-content">
+        <h2>¿Listo para comenzar?</h2>
+        <p>Únete a la plataforma y lleva la gestión de tu taller al siguiente nivel</p>
+        <div class="cta-actions">
+          <a class="btn-cta-primary" [routerLink]="homeActionLink()">
+            <span>{{ homeActionText() }}</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+          @if (!isAuthenticated()) {
+            <a class="btn-cta-secondary" routerLink="/auth">
+              <span>Crear cuenta gratis</span>
+            </a>
+          }
+        </div>
+      </div>
+      <div class="cta-visual">
+        <div class="cta-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M12 8v4l2 2"/>
+          </svg>
+          <p>Seguridad garantizada</p>
+        </div>
+        <div class="cta-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <p>Notificaciones en tiempo real</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="home-footer">
+    <div class="footer-container">
+      <div class="footer-main">
+        <div class="footer-brand">
+          <div class="brand-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+          </div>
+          <div>
+            <h3>Sistema de Talleres</h3>
+            <p>Gestión profesional para talleres mecánicos con tecnología moderna y segura.</p>
+          </div>
+        </div>
+
+        <div class="footer-links-group">
+          <div class="footer-column">
+            <h4>Plataforma</h4>
+            <a routerLink="/">Inicio</a>
+            <a routerLink="/auth">Ingresar</a>
+            @if (isAuthenticated()) {
+              <a routerLink="/dashboard">Dashboard</a>
+              <a routerLink="/profile">Mi Perfil</a>
+            }
+          </div>
+
+          <div class="footer-column">
+            <h4>Características</h4>
+            <a href="#features">Autenticación 2FA</a>
+            <a href="#features">Gestión de perfiles</a>
+            <a href="#features">Geolocalización</a>
+            <a href="#features">Control de sesiones</a>
+          </div>
+
+          <div class="footer-column">
+            <h4>Tecnología</h4>
+            <span class="footer-tech">Angular 21</span>
+            <span class="footer-tech">FastAPI</span>
+            <span class="footer-tech">PostgreSQL</span>
+            <span class="footer-tech">Flutter</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; 2026 Sistema de Talleres. Proyecto académico de gestión vehicular.</p>
+        <div class="footer-badges">
+          <span class="footer-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Seguro
+          </span>
+          <span class="footer-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            Rápido
+          </span>
+        </div>
+      </div>
+    </div>
+  </footer>
+</main>

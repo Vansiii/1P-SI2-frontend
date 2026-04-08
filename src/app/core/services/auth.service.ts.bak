@@ -1,0 +1,90 @@
+import { HttpClient } from '@angular/common/http';
+import { computed, inject, Injectable, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { catchError, map, Observable, of, tap } from 'rxjs';
+import { environment } from '../../../environments/environment';
+import {
+  AuthTokenResponse,
+  LoginWorkshopRequest,
+  RegisterWorkshopRequest,
+  WorkshopProfile,
+} from '../models/auth.models';
+
+const ACCESS_TOKEN_KEY = 'workshop_access_token';
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private readonly httpClient = inject(HttpClient);
+  private readonly router = inject(Router);
+  private readonly apiBaseUrl = environment.apiBaseUrl;
+
+  private readonly accessTokenSignal = signal<string | null>(localStorage.getItem(ACCESS_TOKEN_KEY));
+  private readonly userSignal = signal<WorkshopProfile | null>(null);
+
+  readonly user = this.userSignal.asReadonly();
+  readonly isAuthenticated = computed(() => this.accessTokenSignal() !== null);
+
+  restoreSession(): void {
+    if (!this.accessTokenSignal()) {
+      return;
+    }
+
+    this.fetchCurrentUser().subscribe({
+      error: () => {
+        this.clearSession();
+      },
+    });
+  }
+
+  register(registrationRequest: RegisterWorkshopRequest): Observable<AuthTokenResponse> {
+    return this.httpClient
+      .post<AuthTokenResponse>(`${this.apiBaseUrl}/auth/register`, registrationRequest)
+      .pipe(tap((response) => this.persistSession(response)));
+  }
+
+  login(loginRequest: LoginWorkshopRequest): Observable<AuthTokenResponse> {
+    return this.httpClient
+      .post<AuthTokenResponse>(`${this.apiBaseUrl}/auth/login`, loginRequest)
+      .pipe(tap((response) => this.persistSession(response)));
+  }
+
+  fetchCurrentUser(): Observable<WorkshopProfile> {
+    return this.httpClient
+      .get<WorkshopProfile>(`${this.apiBaseUrl}/auth/me`)
+      .pipe(tap((workshopUser) => this.userSignal.set(workshopUser)));
+  }
+
+  logout(): Observable<void> {
+    if (!this.accessTokenSignal()) {
+      this.clearSession();
+      this.router.navigate(['/auth']);
+      return of(void 0);
+    }
+
+    return this.httpClient.post<{ message: string }>(`${this.apiBaseUrl}/auth/logout`, {}).pipe(
+      catchError(() => of({ message: 'Sesion cerrada localmente' })),
+      tap(() => {
+        this.clearSession();
+        this.router.navigate(['/auth']);
+      }),
+      map(() => void 0),
+    );
+  }
+
+  getAccessToken(): string | null {
+    return this.accessTokenSignal();
+  }
+
+  private persistSession(authResponse: AuthTokenResponse): void {
+    this.accessTokenSignal.set(authResponse.access_token);
+    localStorage.setItem(ACCESS_TOKEN_KEY, authResponse.access_token);
+    this.userSignal.set(authResponse.user);
+  }
+
+  private clearSession(): void {
+    this.accessTokenSignal.set(null);
+    this.userSignal.set(null);
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+  }
+}
+
