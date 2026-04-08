@@ -1,0 +1,180 @@
+<div class="app-layout">
+  <!-- Sidebar -->
+  <aside class="app-sidebar" [class.open]="sidebarOpen()" aria-label="Navegación principal">
+    <div class="sidebar-header">
+      <a routerLink="/dashboard" class="brand-link" (click)="closeSidebar()">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">Sistema de Talleres</span>
+        </div>
+      </a>
+      <button class="mobile-close-btn" (click)="closeSidebar()" aria-label="Cerrar menú">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="sidebar-content">
+      <!-- Navigation Items -->
+      <nav class="nav-section">
+        <div class="nav-item disabled" aria-disabled="true">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <span>Usuarios</span>
+          <span class="nav-badge">Pronto</span>
+        </div>
+        
+        <div class="nav-item disabled" aria-disabled="true">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <span>Auditoría</span>
+          <span class="nav-badge">Pronto</span>
+        </div>
+      </nav>
+    </div>
+
+    <!-- Sidebar Footer -->
+    <div class="sidebar-footer">
+      <div class="sidebar-user-card">
+        <div class="user-avatar-small">
+          {{ displayName().charAt(0).toUpperCase() }}
+        </div>
+        <div class="user-info-small">
+          <p class="user-name-small">{{ displayName() }}</p>
+          <p class="user-role-small">{{ roleLabel() }}</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <div class="app-main">
+    <!-- Top Navbar -->
+    <header class="app-topbar">
+      <div class="topbar-left">
+        <button type="button" class="mobile-menu-btn" (click)="toggleSidebar()" aria-label="Abrir menú">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        
+        <!-- Breadcrumb -->
+        <div class="breadcrumb">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          </svg>
+          <span>Panel de Control</span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Notification Bell -->
+        <button type="button" class="action-icon-btn" aria-label="Notificaciones">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span class="notification-dot"></span>
+        </button>
+
+        <!-- Profile Dropdown -->
+        <div class="profile-dropdown-container">
+          <button type="button" class="profile-trigger-btn" [attr.aria-expanded]="profileMenuOpen()" (click)="toggleProfileMenu()">
+            <div class="avatar-circle">
+              <span class="avatar-text">{{ displayName().charAt(0).toUpperCase() }}</span>
+              <div class="avatar-status"></div>
+            </div>
+            <div class="profile-info-compact">
+              <span class="profile-name">{{ displayName() }}</span>
+              <span class="profile-role">{{ roleLabel() }}</span>
+            </div>
+            <svg class="chevron-icon" [class.rotated]="profileMenuOpen()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+
+          @if (profileMenuOpen()) {
+            <div class="dropdown-menu" role="menu">
+              <a routerLink="/profile" class="dropdown-item" role="menuitem" (click)="profileMenuOpen.set(false)">
+                <div class="dropdown-item-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </div>
+                <span class="dropdown-item-title">Mi Perfil</span>
+              </a>
+              
+              <button type="button" class="dropdown-item" role="menuitem" (click)="openProfileSection('password')">
+                <div class="dropdown-item-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </div>
+                <span class="dropdown-item-title">Cambiar Contraseña</span>
+              </button>
+              
+              <div class="dropdown-divider"></div>
+              
+              <button type="button" class="dropdown-item danger-item" role="menuitem" (click)="logout()">
+                <div class="dropdown-item-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                    <polyline points="16 17 21 12 16 7"/>
+                    <line x1="21" y1="12" x2="9" y2="12"/>
+                  </svg>
+                </div>
+                <span class="dropdown-item-title">Cerrar Sesión</span>
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+    </header>
+
+    <main class="app-content" (click)="profileMenuOpen.set(false)">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+
+  <!-- Mobile Overlay -->
+  @if (sidebarOpen()) {
+    <div class="sidebar-overlay" aria-hidden="true" (click)="closeSidebar()"></div>
+  }
+
+  <!-- Logout Loading Overlay -->
+  @if (isLoggingOut()) {
+    <div class="logout-overlay" role="status" aria-live="polite">
+      <div class="logout-content">
+        <div class="logout-spinner">
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+        </div>
+        <h3 class="logout-title">Cerrando sesión</h3>
+        <p class="logout-message">Espera un momento mientras finalizamos tu sesión de forma segura...</p>
+      </div>
+    </div>
+  }
+</div>

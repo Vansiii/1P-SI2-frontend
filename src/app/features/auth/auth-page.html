@@ -1,27 +1,35 @@
 <main class="auth-layout">
-  <!-- Left Side: Interactive Branding Visualizer -->
   <aside class="brand-panel">
     <div class="brand-mesh"></div>
+    <div class="brand-grid"></div>
     <div class="brand-content">
       <div class="brand-logo">
-        <!-- SVG icon matching industrial/car theme -->
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
         </svg>
-        <span>Examen 1P // Auth</span>
+        <span>Emergency Suite</span>
       </div>
       <div>
-        <h1 class="brand-heading">Gestión Operativa para<br />Talleres Mecánicos.</h1>
-        <p class="brand-subtitle">Conecta con los conductores en tiempo real. Responde a emergencias al instante y maximiza la rentabilidad de tus servicios con herramientas fluidas, simples y rápidas.</p>
+        <h1 class="brand-heading">Autenticación segura para operaciones críticas.</h1>
+        <p class="brand-subtitle">Accede, protege tu cuenta y controla tus sesiones con una experiencia clara, rápida y preparada para producción.</p>
+      </div>
+      <ul class="brand-points" aria-label="Beneficios del sistema">
+        <li>Ingreso unificado por rol</li>
+        <li>2FA con verificación OTP</li>
+        <li>Recuperación y seguridad de cuenta</li>
+      </ul>
+      <div class="brand-badge" aria-hidden="true">
+        <strong>Naranja</strong>
+        <span>Performance + Seguridad</span>
       </div>
     </div>
   </aside>
 
-  <!-- Right Side: The Forms -->
   <section class="form-panel">
     <div class="form-container">
       
       <header class="form-header">
+        <a class="home-link" routerLink="/">← Ir al home</a>
         <h2 class="auth-title">
           @if (mode() === 'login') {
             Bienvenido de vuelta
@@ -61,7 +69,7 @@
         <div class="tab-indicator" [class.tab-right]="mode() === 'register'"></div>
       </nav>
 
-      @if (errorMessage()) {
+      @if (errorMessage() && !isLoginLocked()) {
         <div class="alert-banner" role="alert">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -70,97 +78,207 @@
         </div>
       }
 
+      @if (infoMessage()) {
+        <div class="alert-banner info" role="status">
+          <p>{{ infoMessage() }}</p>
+        </div>
+      }
+
+      @if (mode() === 'login' && isLoginLocked()) {
+        <div class="alert-banner lockout" role="status">
+          <p>Cuenta bloqueada temporalmente. Podrás intentar de nuevo en {{ lockoutTimerLabel() }}.</p>
+        </div>
+      }
+
       @if (mode() === 'login') {
         <form class="auth-form" [formGroup]="loginForm" (ngSubmit)="submitLogin()">
           <div class="form-group">
-            <label for="login-email">Correo Electrónico</label>
+            <label for="login-email">Correo electrónico</label>
             <div class="input-wrapper">
-              <input id="login-email" type="email" formControlName="email" placeholder="contacto@taller.com" autocomplete="username"/>
+              <input id="login-email" type="email" formControlName="email" placeholder="usuario@dominio.com" autocomplete="username"/>
             </div>
             @if (loginForm.controls.email.touched && loginForm.controls.email.invalid) {
               <span class="field-error">Ingresa un correo electrónico válido.</span>
             }
           </div>
 
-          <div class="form-group">
-            <label for="login-password">Contraseña</label>
-            <div class="input-wrapper">
-              <input id="login-password" type="password" formControlName="password" placeholder="Tu clave de acceso" autocomplete="current-password"/>
-            </div>
+          <div class="form-group" style="margin-top: 1.5rem;">
+            <label for="login-password" style="font-weight: 500; margin-bottom: 0.5rem; display: block;">Contraseña</label>
+            <app-password-input
+              inputId="login-password"
+              formControlName="password"
+              autocomplete="current-password"
+              placeholder="Tu clave de acceso"
+              [error]="loginForm.controls.password.touched ? loginForm.controls.password.invalid : false"
+            ></app-password-input>
+
             @if (loginForm.controls.password.touched && loginForm.controls.password.invalid) {
-              <span class="field-error">La contraseña debe tener al menos 8 caracteres.</span>
+              <span class="field-error mt-1" style="display: block; font-size: 0.875rem;">La contraseña debe tener al menos 8 caracteres.</span>
             }
+            <div style="text-align: right; margin-top: 0.5rem;">
+              <a routerLink="/auth/forgot-password" class="text-sm font-medium" style="color: var(--primary, #ea580c); text-decoration: none;">¿Olvidaste tu contraseña?</a>
+            </div>
           </div>
 
-          <button type="submit" class="submit-btn" [disabled]="isSubmitting()">
+          <button type="submit" class="submit-btn" [disabled]="isSubmitting() || isLoginLocked()">
             @if (isSubmitting()) {
               <span class="spinner"></span> 
               Verificando...
             } @else {
-              Entrar al panel
+              Ingresar
             }
           </button>
+
+          <p class="helper-note">
+            Si tu cuenta tiene doble factor, te pediremos OTP en el siguiente paso.
+          </p>
         </form>
       } @else {
-        <form class="auth-form" [formGroup]="registerForm" (ngSubmit)="submitRegister()">
-          
+        <form class="auth-form" [formGroup]="workshopRegisterForm" (ngSubmit)="submitRegister()" autocomplete="off">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="register-first-name">Nombre</label>
+              <div class="input-wrapper">
+                <input id="register-first-name" type="text" formControlName="first_name" placeholder="Tu nombre" />
+              </div>
+              @if (workshopRegisterForm.controls.first_name.touched && workshopRegisterForm.controls.first_name.invalid) {
+                <span class="field-error">Obligatorio, mínimo 2 caracteres.</span>
+              }
+            </div>
+
+            <div class="form-group">
+              <label for="register-last-name">Apellido</label>
+              <div class="input-wrapper">
+                <input id="register-last-name" type="text" formControlName="last_name" placeholder="Tu apellido" />
+              </div>
+              @if (workshopRegisterForm.controls.last_name.touched && workshopRegisterForm.controls.last_name.invalid) {
+                <span class="field-error">Obligatorio, mínimo 2 caracteres.</span>
+              }
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="register-phone">Teléfono</label>
+              <div class="input-wrapper">
+                <input id="register-phone" type="tel" formControlName="phone" placeholder="+591 ..." />
+              </div>
+              @if (workshopRegisterForm.controls.phone.touched && workshopRegisterForm.controls.phone.invalid) {
+                <span class="field-error">Obligatorio, entre 7 y 20 caracteres.</span>
+              }
+            </div>
+
+            <div class="form-group">
+              <label for="register-email">Correo electrónico</label>
+              <div class="input-wrapper">
+                <input id="register-email" type="email" formControlName="email" placeholder="correo@taller.com" autocomplete="off" />
+              </div>
+              @if (workshopRegisterForm.controls.email.touched && workshopRegisterForm.controls.email.invalid) {
+                <span class="field-error">Formato incorrecto.</span>
+              }
+            </div>
+          </div>
+
           <div class="form-grid-2">
             <div class="form-group">
               <label for="register-workshop">Nombre del taller</label>
               <div class="input-wrapper">
                 <input id="register-workshop" type="text" formControlName="workshop_name" placeholder="Ej: Motors 360" />
               </div>
-              @if (registerForm.controls.workshop_name.touched && registerForm.controls.workshop_name.invalid) {
-                <span class="field-error">Obligatorio, min. 3 caracteres.</span>
+              @if (workshopRegisterForm.controls.workshop_name.touched && workshopRegisterForm.controls.workshop_name.invalid) {
+                <span class="field-error">Obligatorio, mínimo 3 caracteres.</span>
               }
             </div>
 
             <div class="form-group">
-              <label for="register-owner">Mecánico Jefe</label>
+              <label for="register-owner">Nombre del propietario</label>
               <div class="input-wrapper">
-                <input id="register-owner" type="text" formControlName="owner_name" placeholder="Nombre completo" />
+                <input id="register-owner" type="text" formControlName="owner_name" placeholder="Nombre del dueño" />
               </div>
-              @if (registerForm.controls.owner_name.touched && registerForm.controls.owner_name.invalid) {
-                <span class="field-error">Obligatorio, min. 3 caracteres.</span>
+              @if (workshopRegisterForm.controls.owner_name.touched && workshopRegisterForm.controls.owner_name.invalid) {
+                <span class="field-error">Obligatorio, mínimo 3 caracteres.</span>
               }
-            </div>
-          </div>
-
-          <div class="form-grid-2">
-            <div class="form-group">
-              <label for="register-email">Correo Electrónico</label>
-              <div class="input-wrapper">
-                <input id="register-email" type="email" formControlName="email" placeholder="correo@taller.com" />
-              </div>
-              @if (registerForm.controls.email.touched && registerForm.controls.email.invalid) {
-                <span class="field-error">Formato incorrecto.</span>
-              }
-            </div>
-
-            <div class="form-group">
-              <label for="register-phone">Teléfono de contacto</label>
-              <div class="input-wrapper">
-                <input id="register-phone" type="tel" formControlName="phone" placeholder="+591 ..." />
-              </div>
             </div>
           </div>
 
           <div class="form-group">
-            <label for="register-password">Crea tu Contraseña</label>
+            <label for="register-address">Dirección del taller</label>
             <div class="input-wrapper">
-              <input id="register-password" type="password" formControlName="password" placeholder="Mínimo 8 caracteres" />
+              <input id="register-address" type="text" formControlName="address" placeholder="Calle, número, zona" />
             </div>
-            @if (registerForm.controls.password.touched && registerForm.controls.password.invalid) {
-              <span class="field-error">Debes usar al menos 8 caracteres seguros.</span>
+            <span class="field-hint">Dirección física del taller (opcional)</span>
+          </div>
+
+          <div class="form-grid-2" style="margin-top: 1rem;">
+            <div class="form-group">
+              <label for="register-password" style="font-weight: 500; margin-bottom: 0.5rem; display: block;">Contraseña</label>
+              <app-password-input
+                inputId="register-password"
+                formControlName="password"
+                autocomplete="new-password"
+                placeholder="Mínimo 8 caracteres"
+                [error]="workshopRegisterForm.controls.password.touched ? workshopRegisterForm.controls.password.invalid : false"
+              ></app-password-input>
+              
+              @if (workshopRegisterForm.controls.password.touched && workshopRegisterForm.controls.password.invalid) {
+                <span class="field-error mt-1" style="display: block; font-size: 0.875rem;">Debes usar al menos 8 caracteres.</span>
+              }
+            </div>
+
+            <div class="form-group">
+              <label for="register-confirm-password" style="font-weight: 500; margin-bottom: 0.5rem; display: block;">Confirmar contraseña</label>
+              <app-password-input
+                inputId="register-confirm-password"
+                formControlName="confirmPassword"
+                autocomplete="new-password"
+                placeholder="Repite tu contraseña"
+                [error]="workshopRegisterForm.controls.confirmPassword.touched ? workshopRegisterForm.controls.confirmPassword.invalid : false"
+              ></app-password-input>
+
+              @if (workshopRegisterForm.controls.confirmPassword.touched && workshopRegisterForm.controls.confirmPassword.invalid) {
+                <span class="field-error mt-1" style="display: block; font-size: 0.875rem;">Debes confirmar tu contraseña.</span>
+              }
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="register-coverage">Radio de cobertura (km)</label>
+            <div class="input-wrapper">
+              <input id="register-coverage" type="number" formControlName="coverage_radius_km" min="1" max="100" step="0.5" />
+            </div>
+            <span class="field-hint">Distancia máxima que tu taller puede cubrir (1-100 km)</span>
+            @if (workshopRegisterForm.controls.coverage_radius_km.touched && workshopRegisterForm.controls.coverage_radius_km.invalid) {
+              <span class="field-error">Debe estar entre 1 y 100 km.</span>
             }
           </div>
 
+          <div class="form-group">
+            <label>Ubicación del taller</label>
+            <p class="field-hint" style="margin-bottom: 12px;">
+              Haz clic en el mapa o arrastra el marcador para seleccionar la ubicación exacta de tu taller. 
+              Usa el botón "Centrar en mi ubicación" para detectar tu posición actual.
+            </p>
+            
+            <div class="map-wrapper">
+              <app-location-picker 
+                [initialLocation]="selectedLocation() || { lat: -17.3935, lng: -66.1570 }"
+                (locationSelected)="onLocationSelected($event)"
+              />
+            </div>
+
+            @if (workshopRegisterForm.controls.latitude.touched && (workshopRegisterForm.controls.latitude.value === 0 || workshopRegisterForm.controls.longitude.value === 0)) {
+              <span class="field-error">Debes seleccionar la ubicación del taller en el mapa.</span>
+            }
+          </div>
+
+          <p class="helper-note">Registro exclusivo para talleres. Los clientes deben registrarse desde la aplicación móvil.</p>
+          
           <button type="submit" class="submit-btn" [disabled]="isSubmitting()">
             @if (isSubmitting()) {
               <span class="spinner"></span> 
               Configurando cuenta...
             } @else {
-              Comenzar a operar
+              Crear cuenta
             }
           </button>
         </form>

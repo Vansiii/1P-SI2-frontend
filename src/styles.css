@@ -7,11 +7,10 @@
 @import '@fontsource/dm-sans/700.css';
 
 :root {
-  /* Minimalist modern palette with Deep Orange */
-  --primary: #f97316; /* Tailwind Orange 500 */
-  --primary-hover: #ea580c; /* Tailwind Orange 600 */
+  --primary: #f97316;
+  --primary-hover: #ea580c;
   --primary-subtle: #ffedd5;
-  --base-bg: #fdfdfd;
+  --base-bg: #f8fafc;
   --surface: #ffffff;
   --border-light: #e5e7eb;
   --border-focus: #c2410c;
@@ -22,9 +21,9 @@
   --font-display: 'Outfit', sans-serif;
   --font-body: 'DM Sans', sans-serif;
   
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-primary: 0 4px 14px 0 rgba(249, 115, 22, 0.39);
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.08);
+  --shadow-md: 0 12px 24px -12px rgb(15 23 42 / 0.22);
+  --shadow-primary: 0 16px 24px -12px rgb(194 65 12 / 0.44);
 }
 
 * {
@@ -39,11 +38,156 @@ body {
   width: 100%;
   font-family: var(--font-body);
   color: var(--text-main);
-  background-color: var(--base-bg);
+  background:
+    radial-gradient(circle at 16% 10%, rgb(249 115 22 / 0.06) 0%, transparent 26%),
+    radial-gradient(circle at 88% 92%, rgb(14 116 144 / 0.05) 0%, transparent 32%),
+    var(--base-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
+}
+
+a,
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid rgb(249 115 22 / 0.45);
+  outline-offset: 2px;
+}
+
+.location-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.btn-secondary:active {
+  transform: scale(0.98);
+}
+
+.btn-secondary svg {
+  flex-shrink: 0;
+}
+
+.map-wrapper {
+  margin: 1rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+}
+
+.location-display {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  margin-top: 0.75rem;
+}
+
+.location-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #166534;
+}
+
+.location-value {
+  font-size: 0.875rem;
+  font-family: 'Courier New', monospace;
+  color: #15803d;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.password-wrapper {
+  position: relative;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.password-toggle:hover {
+  color: #374151;
+}
+
+.password-toggle:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.password-wrapper input {
+  padding-right: 44px;
+}
+
+.home-link {
+  display: inline-flex;
+  margin-bottom: 0.85rem;
+  text-decoration: none;
+  color: #9a3412;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.home-link:hover {
+  text-decoration: underline;
+}
+
+.helper-note {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
 }

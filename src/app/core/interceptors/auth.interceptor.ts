@@ -1,5 +1,6 @@
-import { HttpInterceptorFn } from '@angular/common/http';
+import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
+import { tap } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
@@ -7,7 +8,23 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const accessToken = authService.getAccessToken();
 
   if (!accessToken) {
-    return next(request);
+    return next(request).pipe(
+      tap({
+        error: (error) => {
+          if (error instanceof HttpErrorResponse) {
+            console.log('🔴 HTTP Error Response:', {
+              status: error.status,
+              statusText: error.statusText,
+              url: error.url,
+              error: error.error,
+              message: error.message,
+            });
+          } else {
+            console.log('🔴 Unknown Error:', error);
+          }
+        }
+      })
+    );
   }
 
   const authorizedRequest = request.clone({
@@ -16,5 +33,21 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
     },
   });
 
-  return next(authorizedRequest);
+  return next(authorizedRequest).pipe(
+    tap({
+      error: (error) => {
+        if (error instanceof HttpErrorResponse) {
+          console.log('🔴 HTTP Error Response:', {
+            status: error.status,
+            statusText: error.statusText,
+            url: error.url,
+            error: error.error,
+            message: error.message,
+          });
+        } else {
+          console.log('🔴 Unknown Error:', error);
+        }
+      }
+    })
+  );
 };
