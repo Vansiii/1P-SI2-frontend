@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { finalize } from 'rxjs';
 import { AppUserProfile } from '../../../core/models/auth.models';
 import { AuthService } from '../../../core/services/auth.service';
@@ -20,7 +20,7 @@ function matchingPasswordsValidator(group: AbstractControl): ValidationErrors | 
 
 @Component({
   selector: 'app-profile-page',
-  imports: [ReactiveFormsModule, RouterLink, LocationPickerComponent, PasswordInputComponent],
+  imports: [ReactiveFormsModule, LocationPickerComponent, PasswordInputComponent],
   templateUrl: './profile-page.html',
   styleUrl: './profile-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

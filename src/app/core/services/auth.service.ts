@@ -238,8 +238,12 @@ export class AuthService {
 
   revokeAllSessions(): Observable<{ message: string }> {
     return this.httpClient
-      .post<ApiResponse<{ revoked: boolean }>>(`${this.apiBaseUrl}/tokens/revoke`, { revoke_all: true })
-      .pipe(map((response) => ({ message: response.message || 'Sesiones revocadas correctamente' })));
+      .delete<ApiResponse<{ message: string; revoked_count: number }>>(`${this.apiBaseUrl}/sessions`)
+      .pipe(
+        map((response) => ({ 
+          message: response.data.message || response.message || 'Sesiones revocadas correctamente' 
+        }))
+      );
   }
 
   deleteAccount(currentPassword: string): Observable<{ message: string }> {

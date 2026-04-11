@@ -1,0 +1,314 @@
+<div class="permissions-container">
+  <!-- Header Section -->
+  <header class="page-header">
+    <div class="header-content">
+      <div class="header-text">
+        <h1 class="page-title">
+          <svg class="title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          Gestión de Permisos
+        </h1>
+        <p class="page-subtitle">Administra los permisos asignados a cada rol del sistema</p>
+      </div>
+      
+      @if (selectedRole()) {
+        <div class="header-stats">
+          <div class="stat-card">
+            <div class="stat-value">{{ rolePermissions().length }}</div>
+            <div class="stat-label">Permisos Activos</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">{{ allPermissions().length - rolePermissions().length }}</div>
+            <div class="stat-label">Disponibles</div>
+          </div>
+        </div>
+      }
+    </div>
+  </header>
+
+  <!-- Alerts -->
+  @if (error()) {
+    <div class="alert alert-error" [@slideDown]>
+      <div class="alert-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <div class="alert-content">
+        <p class="alert-title">Error</p>
+        <p class="alert-message">{{ error() }}</p>
+      </div>
+      <button class="alert-close" (click)="error.set(null)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  }
+
+  @if (success()) {
+    <div class="alert alert-success" [@slideDown]>
+      <div class="alert-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+      </div>
+      <div class="alert-content">
+        <p class="alert-title">Éxito</p>
+        <p class="alert-message">{{ success() }}</p>
+      </div>
+      <button class="alert-close" (click)="success.set(null)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  }
+
+  <!-- Loading State -->
+  @if (isLoading()) {
+    <div class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner">
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+        </div>
+        <p class="loading-text">Cargando datos...</p>
+      </div>
+    </div>
+  }
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Roles Sidebar -->
+    <aside class="roles-sidebar" [class.has-selection]="selectedRole()">
+      <div class="sidebar-header">
+        <h2 class="sidebar-title">Roles del Sistema</h2>
+        <span class="roles-count">{{ modifiableRoles().length }} modificables</span>
+      </div>
+
+      <div class="roles-list">
+        @for (role of modifiableRoles(); track role.value) {
+          <button
+            class="role-card"
+            [class.active]="selectedRole()?.value === role.value"
+            (click)="selectRole(role)"
+          >
+            <div class="role-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                @if (role.value === 'client') {
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                }
+                @if (role.value === 'workshop') {
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                }
+                @if (role.value === 'technician') {
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="8.5" cy="7" r="4"/>
+                  <polyline points="17 11 19 13 23 9"/>
+                }
+              </svg>
+            </div>
+            <div class="role-content">
+              <h3 class="role-name">{{ role.name }}</h3>
+              <p class="role-description">{{ role.description }}</p>
+              <div class="role-meta">
+                <span class="permission-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                  {{ role.permission_count }} permisos
+                </span>
+              </div>
+            </div>
+            @if (selectedRole()?.value === role.value) {
+              <div class="active-indicator"></div>
+            }
+          </button>
+        }
+
+        @if (modifiableRoles().length === 0 && !isLoading()) {
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            <p>No hay roles disponibles</p>
+          </div>
+        }
+      </div>
+    </aside>
+
+    <!-- Permissions Panel -->
+    <main class="permissions-panel">
+      @if (selectedRole()) {
+        <div class="panel-container">
+          <!-- Panel Header -->
+          <div class="panel-header">
+            <div class="panel-title-section">
+              <h2 class="panel-title">Permisos de {{ selectedRole()!.name }}</h2>
+              <p class="panel-subtitle">
+                {{ rolePermissions().length }} de {{ allPermissions().length }} permisos seleccionados
+              </p>
+            </div>
+            <div class="panel-actions">
+              <button 
+                class="btn btn-secondary" 
+                (click)="resetPermissions()" 
+                [disabled]="isSaving()"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="1 4 1 10 7 10"/>
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+                Restablecer
+              </button>
+              <button 
+                class="btn btn-primary" 
+                (click)="savePermissions()" 
+                [disabled]="isSaving()"
+              >
+                @if (isSaving()) {
+                  <div class="btn-spinner"></div>
+                  Guardando...
+                } @else {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                  </svg>
+                  Guardar Cambios
+                }
+              </button>
+            </div>
+          </div>
+
+          <!-- Search Bar -->
+          <div class="search-container">
+            <div class="search-box">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="m21 21-4.35-4.35"/>
+              </svg>
+              <input
+                type="text"
+                placeholder="Buscar permisos por nombre o categoría..."
+                [value]="searchTerm()"
+                (input)="searchTerm.set($any($event.target).value)"
+                class="search-input"
+              />
+              @if (searchTerm()) {
+                <button class="search-clear" (click)="searchTerm.set('')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              }
+            </div>
+          </div>
+
+          <!-- Permissions Categories -->
+          <div class="permissions-content">
+            @for (category of permissionsByCategory(); track category[0]) {
+              <div class="category-section">
+                <div class="category-header">
+                  <div class="category-title-section">
+                    <h3 class="category-title">{{ getCategoryName(category[0]) }}</h3>
+                    <span class="category-count">{{ category[1].length }} permisos</span>
+                  </div>
+                  <div class="category-actions">
+                    <button
+                      class="action-btn"
+                      (click)="selectAllInCategory(category[1])"
+                      [disabled]="isSaving()"
+                      title="Seleccionar todos"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="9 11 12 14 22 4"/>
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                      </svg>
+                      Todos
+                    </button>
+                    <button
+                      class="action-btn"
+                      (click)="deselectAllInCategory(category[1])"
+                      [disabled]="isSaving()"
+                      title="Deseleccionar todos"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      </svg>
+                      Ninguno
+                    </button>
+                  </div>
+                </div>
+
+                <div class="permissions-grid">
+                  @for (permission of category[1]; track permission.value) {
+                    <label class="permission-card">
+                      <input
+                        type="checkbox"
+                        [checked]="isPermissionSelected(permission.value)"
+                        (change)="togglePermission(permission.value)"
+                        [disabled]="isSaving()"
+                        class="permission-checkbox"
+                      />
+                      <div class="permission-content">
+                        <div class="checkbox-custom">
+                          <svg class="checkbox-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        </div>
+                        <div class="permission-info">
+                          <span class="permission-name">{{ permission.name }}</span>
+                          <span class="permission-value">{{ permission.value }}</span>
+                        </div>
+                      </div>
+                    </label>
+                  }
+                </div>
+              </div>
+            }
+
+            @if (filteredPermissions().length === 0) {
+              <div class="empty-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="m21 21-4.35-4.35"/>
+                  <line x1="11" y1="8" x2="11" y2="14"/>
+                  <line x1="8" y1="11" x2="14" y2="11"/>
+                </svg>
+                <h3>No se encontraron permisos</h3>
+                <p>Intenta con otros términos de búsqueda</p>
+              </div>
+            }
+          </div>
+        </div>
+      } @else {
+        <div class="empty-selection">
+          <div class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <h3 class="empty-title">Selecciona un rol para comenzar</h3>
+          <p class="empty-description">
+            Elige un rol de la lista lateral para ver y gestionar sus permisos
+          </p>
+        </div>
+      }
+    </main>
+  </div>
+</div>
