@@ -10,6 +10,7 @@ export const routes: Routes = [
   {
     path: '',
     component: HomePageComponent,
+    canActivate: [publicOnlyGuard],
   },
   {
     path: 'auth',
@@ -50,6 +51,28 @@ export const routes: Routes = [
     ]
   },
   {
+    path: 'admin',
+    canActivate: [authGuard],
+    component: PrivateShellComponent,
+    children: [
+      { 
+        path: 'permissions', 
+        loadComponent: () => import('./features/admin/permissions-management/permissions-management').then(m => m.PermissionsManagementComponent)
+      }
+    ]
+  },
+  {
+    path: 'workshop',
+    canActivate: [authGuard],
+    component: PrivateShellComponent,
+    children: [
+      { 
+        path: 'incidents', 
+        loadComponent: () => import('./features/workshop/incidents-list/incidents-list').then(m => m.IncidentsListComponent)
+      }
+    ]
+  },
+  {
     path: 'profile',
     canActivate: [authGuard],
     loadComponent: () => import('./layouts/minimal-profile-layout/minimal-profile-layout').then(m => m.MinimalProfileLayout),
@@ -62,6 +85,6 @@ export const routes: Routes = [
   },
   {
     path: '**',
-    redirectTo: '',
+    loadComponent: () => import('./features/not-found/not-found').then(m => m.NotFoundComponent),
   },
 ];

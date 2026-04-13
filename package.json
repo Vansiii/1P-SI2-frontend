@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "mecanicoya-frontend",
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
@@ -12,6 +12,7 @@
   "private": true,
   "packageManager": "npm@10.9.3",
   "dependencies": {
+    "@angular/animations": "^21.2.7",
     "@angular/common": "^21.2.0",
     "@angular/compiler": "^21.2.0",
     "@angular/core": "^21.2.0",
@@ -34,6 +35,10 @@
     "prettier": "^3.8.1",
     "typescript": "~5.9.2",
     "typescript-eslint": "8.56.1",
+    "vite": "^8.0.8",
     "vitest": "^4.0.8"
+  },
+  "overrides": {
+    "vite": "^8.0.8"
   }
 }

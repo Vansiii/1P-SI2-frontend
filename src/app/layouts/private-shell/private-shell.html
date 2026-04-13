@@ -9,7 +9,7 @@
           </svg>
         </div>
         <div class="brand-text">
-          <span class="brand-name">Sistema de Talleres</span>
+          <span class="brand-name">MecánicoYa</span>
         </div>
       </a>
       <button class="mobile-close-btn" (click)="closeSidebar()" aria-label="Cerrar menú">
@@ -23,6 +23,34 @@
     <div class="sidebar-content">
       <!-- Navigation Items -->
       <nav class="nav-section">
+        <!-- Gestión de Permisos - Solo Administrador -->
+        @if (isAdmin()) {
+          <a routerLink="/admin/permissions" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+            <div class="nav-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <span>Gestión de Permisos</span>
+          </a>
+        }
+
+        <!-- Gestionar Solicitudes Entrantes - Talleres -->
+        @if (isWorkshop()) {
+          <a routerLink="/workshop/incidents" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+            <div class="nav-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <line x1="9" y1="15" x2="15" y2="15"/>
+              </svg>
+            </div>
+            <span>Solicitudes Entrantes</span>
+          </a>
+        }
+        
         <div class="nav-item disabled" aria-disabled="true">
           <div class="nav-item-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -89,13 +117,23 @@
 
       <div class="topbar-right">
         <!-- Notification Bell -->
-        <button type="button" class="action-icon-btn" aria-label="Notificaciones">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
-          <span class="notification-dot"></span>
-        </button>
+        @if (isWorkshop()) {
+          <div class="notifications-container">
+            <button type="button" class="action-icon-btn" aria-label="Notificaciones" (click)="toggleNotifications()">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              @if (notificationCount() > 0) {
+                <span class="notification-badge">{{ notificationCount() > 99 ? '99+' : notificationCount() }}</span>
+              }
+            </button>
+
+            @if (notificationsOpen()) {
+              <app-notifications-panel (close)="closeNotifications()" (countChange)="onNotificationCountChange($event)" />
+            }
+          </div>
+        }
 
         <!-- Profile Dropdown -->
         <div class="profile-dropdown-container">
@@ -153,7 +191,7 @@
       </div>
     </header>
 
-    <main class="app-content" (click)="profileMenuOpen.set(false)">
+    <main class="app-content" (click)="profileMenuOpen.set(false); notificationsOpen.set(false)">
       <router-outlet></router-outlet>
     </main>
   </div>

@@ -1,0 +1,456 @@
+<div class="incidents-container">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <div class="header-text">
+        <h1 class="page-title">
+          <svg class="title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          Solicitudes
+        </h1>
+        <p class="page-subtitle">Gestiona las solicitudes de emergencia vehicular</p>
+      </div>
+      <div class="header-stats">
+        <div class="stat-card">
+          <div class="stat-value">{{ statusCounts().pendiente }}</div>
+          <div class="stat-label">Pendientes</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ statusCounts().total }}</div>
+          <div class="stat-label">Total</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Alert -->
+  @if (error()) {
+    <div class="alert alert-error">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 8v4m0 4h.01"/>
+      </svg>
+      <div class="alert-content">
+        <p class="alert-title">Error</p>
+        <p class="alert-message">{{ error() }}</p>
+      </div>
+      <button class="alert-close" (click)="error.set(null)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  }
+
+  <!-- Success Alert -->
+  @if (success()) {
+    <div class="alert alert-success">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M5 13l4 4L19 7"/>
+      </svg>
+      <div class="alert-content">
+        <p class="alert-title">Éxito</p>
+        <p class="alert-message">{{ success() }}</p>
+      </div>
+      <button class="alert-close" (click)="success.set(null)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  }
+
+  <!-- Loading Overlay -->
+  @if (loading()) {
+    <div class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner">
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+        </div>
+        <p class="loading-text">Cargando solicitudes...</p>
+      </div>
+    </div>
+  }
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Filters Sidebar -->
+    <aside class="filters-sidebar">
+      <div class="sidebar-header">
+        <h2 class="sidebar-title">Filtros</h2>
+        <p class="filters-count">{{ statusCounts().total }} solicitudes</p>
+      </div>
+
+      <div class="filters-list">
+        <button 
+          class="filter-card"
+          [class.active]="selectedFilter() === 'pendiente'"
+          (click)="filterIncidents('pendiente')">
+          <div class="filter-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+          </div>
+          <div class="filter-content">
+            <div class="filter-name">Pendientes</div>
+            <div class="filter-count">{{ statusCounts().pendiente }}</div>
+          </div>
+          @if (selectedFilter() === 'pendiente') {
+            <div class="active-indicator"></div>
+          }
+        </button>
+
+        <button 
+          class="filter-card"
+          [class.active]="selectedFilter() === 'asignado'"
+          (click)="filterIncidents('asignado')">
+          <div class="filter-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <div class="filter-content">
+            <div class="filter-name">Asignadas</div>
+            <div class="filter-count">{{ statusCounts().asignado }}</div>
+          </div>
+          @if (selectedFilter() === 'asignado') {
+            <div class="active-indicator"></div>
+          }
+        </button>
+
+        <button 
+          class="filter-card"
+          [class.active]="selectedFilter() === 'en_proceso'"
+          (click)="filterIncidents('en_proceso')">
+          <div class="filter-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <div class="filter-content">
+            <div class="filter-name">En Proceso</div>
+            <div class="filter-count">{{ statusCounts().en_proceso }}</div>
+          </div>
+          @if (selectedFilter() === 'en_proceso') {
+            <div class="active-indicator"></div>
+          }
+        </button>
+
+        <button 
+          class="filter-card"
+          [class.active]="selectedFilter() === 'resuelto'"
+          (click)="filterIncidents('resuelto')">
+          <div class="filter-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <div class="filter-content">
+            <div class="filter-name">Resueltas</div>
+            <div class="filter-count">{{ statusCounts().resuelto }}</div>
+          </div>
+          @if (selectedFilter() === 'resuelto') {
+            <div class="active-indicator"></div>
+          }
+        </button>
+      </div>
+
+      <div class="view-toggle">
+        <button 
+          class="view-btn"
+          [class.active]="viewMode() === 'list'"
+          (click)="viewMode.set('list')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+          Lista
+        </button>
+        <button 
+          class="view-btn"
+          [class.active]="viewMode() === 'map'"
+          (click)="viewMode.set('map')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+          Mapa
+        </button>
+      </div>
+    </aside>
+
+    <!-- Content Panel -->
+    <div class="content-panel">
+      @if (viewMode() === 'map') {
+        <!-- Map View -->
+        <div class="map-view">
+          <div id="map" class="map"></div>
+          @if (incidents().length > 0) {
+            <div class="map-legend">
+              <div class="legend-item">
+                <span class="legend-dot" style="background: #f59e0b;"></span>
+                <span>Pendientes</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-dot" style="background: #3b82f6;"></span>
+                <span>Asignadas</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-dot" style="background: #8b5cf6;"></span>
+                <span>En Proceso</span>
+              </div>
+              <div class="legend-item">
+                <span class="legend-dot" style="background: #10b981;"></span>
+                <span>Resueltas</span>
+              </div>
+            </div>
+          }
+        </div>
+      } @else if (selectedIncident()) {
+        <!-- Detail View -->
+        <div class="detail-view">
+          @if (loadingDetail()) {
+            <div class="loading-overlay">
+              <div class="loading-content">
+                <div class="loading-spinner">
+                  <div class="spinner-ring"></div>
+                  <div class="spinner-ring"></div>
+                  <div class="spinner-ring"></div>
+                </div>
+                <p class="loading-text">Cargando detalles...</p>
+              </div>
+            </div>
+          } @else {
+            <div class="detail-header">
+              <div>
+                <h2 class="detail-title">Solicitud #{{ selectedIncident()!.id }}</h2>
+                <span class="status-badge" [class]="'status-' + getEstadoColor(selectedIncident()!.estado_actual)">
+                  {{ getEstadoLabel(selectedIncident()!.estado_actual) }}
+                </span>
+              </div>
+              <button class="close-btn" (click)="selectedIncident.set(null)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="detail-content">
+              <div class="detail-section">
+                <h3>Descripción</h3>
+                <p>{{ selectedIncident()!.descripcion }}</p>
+              </div>
+
+              <div class="detail-section">
+                <h3>Información</h3>
+                <div class="info-grid">
+                  @if (selectedIncident()!.prioridad_ia) {
+                    <div class="info-item">
+                      <span class="info-label">Prioridad</span>
+                      <span class="info-value priority-{{ getPrioridadColor(selectedIncident()!.prioridad_ia!) }}">
+                        {{ getPrioridadLabel(selectedIncident()!.prioridad_ia!) }}
+                      </span>
+                    </div>
+                  }
+                  @if (selectedIncident()!.categoria_ia) {
+                    <div class="info-item">
+                      <span class="info-label">Categoría</span>
+                      <span class="info-value">{{ selectedIncident()!.categoria_ia }}</span>
+                    </div>
+                  }
+                  <div class="info-item">
+                    <span class="info-label">Fecha</span>
+                    <span class="info-value">{{ formatFullDate(selectedIncident()!.created_at) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              @if (selectedIncident()!.imagenes && selectedIncident()!.imagenes!.length > 0) {
+                <div class="detail-section">
+                  <h3>Imágenes ({{ selectedIncident()!.imagenes!.length }})</h3>
+                  <div class="images-grid">
+                    @for (imagen of selectedIncident()!.imagenes; track imagen.id) {
+                      <div class="image-item" (click)="openImageModal(imagen.file_url)">
+                        <img [src]="imagen.file_url" [alt]="imagen.file_name" />
+                        <div class="image-overlay">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                          </svg>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+
+              @if (selectedIncident()!.audios && selectedIncident()!.audios!.length > 0) {
+                <div class="detail-section">
+                  <h3>Audios ({{ selectedIncident()!.audios!.length }})</h3>
+                  <div class="audios-list">
+                    @for (audio of selectedIncident()!.audios; track audio.id) {
+                      <div class="audio-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M9 18V5l12-2v13M9 18c0 1.657-1.343 3-3 3s-3-1.343-3-3 1.343-3 3-3 3 1.343 3 3zm12-2c0 1.657-1.343 3-3 3s-3-1.343-3-3 1.343-3 3-3 3 1.343 3 3z"/>
+                        </svg>
+                        <audio controls [src]="audio.file_url">
+                          Tu navegador no soporta el elemento de audio.
+                        </audio>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+
+              @if (selectedIncident()!.direccion_referencia) {
+                <div class="detail-section">
+                  <h3>Ubicación</h3>
+                  <p class="location-text">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    {{ selectedIncident()!.direccion_referencia }}
+                  </p>
+                  <div class="mini-map" [id]="'mini-map-' + selectedIncident()!.id"></div>
+                </div>
+              }
+
+              <div class="detail-actions">
+                @if (selectedIncident()!.estado_actual === 'pendiente') {
+                  <button class="btn btn-primary" (click)="acceptIncident(selectedIncident()!)" [disabled]="isProcessing()">
+                    @if (isProcessing()) {
+                      <div class="btn-spinner"></div>
+                    } @else {
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 13l4 4L19 7"/>
+                      </svg>
+                    }
+                    Aceptar Solicitud
+                  </button>
+                  <button class="btn btn-secondary" (click)="openRejectModal(selectedIncident()!)" [disabled]="isProcessing()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                    Rechazar
+                  </button>
+                }
+                @if (selectedIncident()!.estado_actual === 'asignado') {
+                  <button class="btn btn-primary">Asignar Técnico</button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      } @else {
+        <!-- List View -->
+        @if (incidents().length === 0) {
+          <div class="empty-state">
+            <div class="empty-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 6v6l4 2"/>
+              </svg>
+            </div>
+            <h3 class="empty-title">No hay solicitudes</h3>
+            <p class="empty-description">No se encontraron solicitudes con el filtro seleccionado</p>
+          </div>
+        } @else {
+          <div class="incidents-grid">
+            @for (incident of incidents(); track incident.id) {
+              <div class="incident-card" (click)="selectIncident(incident)">
+                <div class="incident-header">
+                  <span class="incident-id">#{{ incident.id }}</span>
+                  <span class="status-dot" [class]="'status-' + getEstadoColor(incident.estado_actual)"></span>
+                </div>
+                <p class="incident-description">{{ truncate(incident.descripcion, 100) }}</p>
+                <div class="incident-meta">
+                  @if (incident.prioridad_ia) {
+                    <span class="meta-badge priority-{{ getPrioridadColor(incident.prioridad_ia) }}">
+                      {{ getPrioridadLabel(incident.prioridad_ia) }}
+                    </span>
+                  }
+                  @if (incident.categoria_ia) {
+                    <span class="meta-badge category">
+                      {{ incident.categoria_ia }}
+                    </span>
+                  }
+                </div>
+                <div class="incident-footer">
+                  <span class="incident-time">{{ formatDate(incident.created_at) }}</span>
+                  @if (incident.direccion_referencia) {
+                    <span class="incident-location">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      {{ truncate(incident.direccion_referencia, 30) }}
+                    </span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+      }
+    </div>
+  </div>
+
+  <!-- Reject Modal -->
+  @if (showRejectModal()) {
+    <div class="modal-overlay" (click)="closeRejectModal()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>Rechazar Solicitud</h3>
+          <button class="close-btn" (click)="closeRejectModal()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">Por favor, indica el motivo por el cual rechazas esta solicitud:</p>
+          <textarea 
+            class="modal-textarea"
+            [(ngModel)]="rejectReason"
+            placeholder="Ej: No contamos con el personal disponible en este momento..."
+            rows="4"
+            [disabled]="isProcessing()"></textarea>
+          @if (rejectReason().length > 0 && rejectReason().length < 10) {
+            <p class="modal-hint error">El motivo debe tener al menos 10 caracteres</p>
+          }
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeRejectModal()" [disabled]="isProcessing()">
+            Cancelar
+          </button>
+          <button 
+            class="btn btn-primary" 
+            (click)="rejectIncident()" 
+            [disabled]="isProcessing() || rejectReason().trim().length < 10">
+            @if (isProcessing()) {
+              <div class="btn-spinner"></div>
+            }
+            Confirmar Rechazo
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Image Modal -->
+  @if (selectedImage()) {
+    <div class="image-modal-overlay" (click)="closeImageModal()">
+      <div class="image-modal-content" (click)="$event.stopPropagation()">
+        <button class="image-modal-close" (click)="closeImageModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+        <img [src]="selectedImage()!" alt="Imagen completa" />
+      </div>
+    </div>
+  }
+</div>
