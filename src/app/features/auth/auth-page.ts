@@ -5,6 +5,7 @@ import { finalize } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { LocationPickerComponent } from './location-picker/location-picker';
 import { PasswordInputComponent } from '../../shared/ui/password-input/password-input';
+import { extractErrorWithMetadata } from '../../core/utils/error-handler.util';
 
 const LOGIN_LOCKOUT_UNTIL_KEY = 'auth_login_lockout_until';
 

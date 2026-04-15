@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
+import { ApiResponse } from '../models/api.models';
 
 export interface UploadResponse {
   file_name: string;
@@ -11,12 +12,6 @@ export interface UploadResponse {
   mime_type: string;
   size: number;
   uploaded_by: number;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  message: string;
 }
 
 @Injectable({

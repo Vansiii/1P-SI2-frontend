@@ -1,7 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
+import { ApiResponse } from '../models/api.models';
 
 export interface Incident {
   id: number;
@@ -35,18 +37,6 @@ export interface Incident {
   };
 }
 
-export interface IncidentResponse {
-  success: boolean;
-  data: Incident[];
-  message?: string;
-}
-
-export interface IncidentDetailResponse {
-  success: boolean;
-  data: Incident;
-  message?: string;
-}
-
 @Injectable({
   providedIn: 'root'
 })
@@ -57,42 +47,54 @@ export class IncidentsService {
   /**
    * Obtiene todos los incidentes del usuario actual
    */
-  getIncidents(): Observable<IncidentResponse> {
-    return this.http.get<IncidentResponse>(this.apiUrl);
+  getIncidents(): Observable<Incident[]> {
+    return this.http.get<ApiResponse<Incident[]>>(this.apiUrl).pipe(
+      map(response => response.data)
+    );
   }
 
   /**
    * Obtiene los incidentes pendientes de asignación (para talleres)
    */
-  getPendingIncidents(): Observable<IncidentResponse> {
-    return this.http.get<IncidentResponse>(`${this.apiUrl}/pendientes/asignacion`);
+  getPendingIncidents(): Observable<Incident[]> {
+    return this.http.get<ApiResponse<Incident[]>>(`${this.apiUrl}/pendientes/asignacion`).pipe(
+      map(response => response.data)
+    );
   }
 
   /**
    * Obtiene el detalle de un incidente específico
    */
-  getIncidentDetail(id: number): Observable<IncidentDetailResponse> {
-    return this.http.get<IncidentDetailResponse>(`${this.apiUrl}/${id}`);
+  getIncidentDetail(id: number): Observable<Incident> {
+    return this.http.get<ApiResponse<Incident>>(`${this.apiUrl}/${id}`).pipe(
+      map(response => response.data)
+    );
   }
 
   /**
    * Acepta un incidente (para talleres)
    */
-  acceptIncident(id: number): Observable<IncidentDetailResponse> {
-    return this.http.post<IncidentDetailResponse>(`${this.apiUrl}/${id}/aceptar`, {});
+  acceptIncident(id: number): Observable<Incident> {
+    return this.http.post<ApiResponse<Incident>>(`${this.apiUrl}/${id}/aceptar`, {}).pipe(
+      map(response => response.data)
+    );
   }
 
   /**
    * Rechaza un incidente (para talleres)
    */
-  rejectIncident(id: number, motivo: string): Observable<IncidentDetailResponse> {
-    return this.http.post<IncidentDetailResponse>(`${this.apiUrl}/${id}/rechazar`, { motivo });
+  rejectIncident(id: number, motivo: string): Observable<Incident> {
+    return this.http.post<ApiResponse<Incident>>(`${this.apiUrl}/${id}/rechazar`, { motivo }).pipe(
+      map(response => response.data)
+    );
   }
 
   /**
    * Actualiza el estado de un incidente
    */
-  updateIncidentStatus(id: number, estado: string): Observable<IncidentDetailResponse> {
-    return this.http.patch<IncidentDetailResponse>(`${this.apiUrl}/${id}/estado`, { estado });
+  updateIncidentStatus(id: number, estado: string): Observable<Incident> {
+    return this.http.patch<ApiResponse<Incident>>(`${this.apiUrl}/${id}/estado`, { estado }).pipe(
+      map(response => response.data)
+    );
   }
 }

@@ -58,6 +58,14 @@ export const routes: Routes = [
       { 
         path: 'permissions', 
         loadComponent: () => import('./features/admin/permissions-management/permissions-management').then(m => m.PermissionsManagementComponent)
+      },
+      {
+        path: 'workshops',
+        loadComponent: () => import('./features/admin/workshops-management/workshops-management').then(m => m.WorkshopsManagementComponent)
+      },
+      {
+        path: 'audit-logs',
+        loadComponent: () => import('./features/admin/audit-logs/audit-logs').then(m => m.AuditLogsComponent)
       }
     ]
   },

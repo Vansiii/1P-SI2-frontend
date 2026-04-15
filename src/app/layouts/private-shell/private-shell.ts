@@ -34,9 +34,8 @@ export class PrivateShellComponent {
 
   private loadNotificationCount(): void {
     this.incidentsService.getPendingIncidents().subscribe({
-      next: (response) => {
-        const data = response.data || [];
-        const pendingCount = data.filter(i => i.estado_actual === 'pendiente').length;
+      next: (data) => {
+        const pendingCount = data.filter((i) => i.estado_actual === 'pendiente').length;
         this.notificationCount.set(pendingCount);
       },
       error: (err) => {
@@ -65,13 +64,13 @@ export class PrivateShellComponent {
     if (rawType === 'workshop') return 'Taller';
     if (rawType === 'client') return 'Cliente';
     if (rawType === 'technician') return 'Tecnico';
-    if (rawType === 'administrator' || rawType === 'admin') return 'Administrador';
+    if (rawType === 'admin') return 'Administrador';
     return 'Usuario';
   });
 
   readonly isAdmin = computed(() => {
     const userType = this.user()?.user_type ?? '';
-    return userType === 'administrator' || userType === 'admin';
+    return userType === 'admin';
   });
 
   readonly isWorkshop = computed(() => {

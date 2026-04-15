@@ -75,7 +75,7 @@ export class IncidentsListComponent implements OnInit {
   loading = signal(false);
   error = signal<string | null>(null);
   success = signal<string | null>(null);
-  selectedFilter = signal<string>('pendiente');
+  selectedFilter = signal<string>('todos');
   selectedIncident = signal<IncidentDetail | null>(null);
   loadingDetail = signal(false);
   viewMode = signal<'list' | 'map'>('list');
@@ -106,20 +106,7 @@ export class IncidentsListComponent implements OnInit {
   });
 
   constructor() {
-    effect(() => {
-      if (this.viewMode() === 'map' && !this.map) {
-        setTimeout(() => this.initMap(), 100);
-      }
-    });
-
-    // Actualizar marcadores cuando cambien los incidentes en vista de mapa
-    effect(() => {
-      if (this.viewMode() === 'map' && this.map && this.incidents().length > 0) {
-        console.log('Effect: Updating markers because incidents changed:', this.incidents().length);
-        setTimeout(() => this.updateMapMarkers(), 100);
-      }
-    });
-
+    // Manejar mini-mapa en vista de detalle
     effect(() => {
       const incident = this.selectedIncident();
       if (incident && this.viewMode() === 'list') {
@@ -127,19 +114,32 @@ export class IncidentsListComponent implements OnInit {
       }
     });
 
-    // Cargar todos los incidentes cuando se cambia a vista de mapa
+    // Manejar cambio de vista entre lista y mapa
     effect(() => {
-      if (this.viewMode() === 'map') {
+      const mode = this.viewMode();
+      
+      if (mode === 'map') {
         // Cerrar el detalle cuando se cambia a vista de mapa
         this.selectedIncident.set(null);
-        this.loadAllIncidentsForMap();
         
-        // Forzar actualización del mapa después de un pequeño delay
+        // Limpiar el mapa anterior si existe
+        if (this.map) {
+          console.log('Removing old map instance');
+          this.map.remove();
+          this.map = null;
+          this.markers = [];
+        }
+        
+        // Cargar incidentes según el filtro seleccionado
+        this.loadIncidentsForMap();
+        
+        // Inicializar el mapa después de un pequeño delay
         setTimeout(() => {
-          if (this.map) {
-            this.map.invalidateSize();
-          }
-        }, 200);
+          this.initMap();
+        }, 100);
+      } else if (mode === 'list') {
+        // Cuando vuelve a lista, recargar los incidentes del filtro seleccionado
+        this.loadIncidents();
       }
     });
   }
@@ -218,52 +218,146 @@ export class IncidentsListComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
 
-    let url: string;
-    if (this.selectedFilter() === 'pendiente') {
-      url = `${this.apiUrl}/pendientes/asignacion`;
+    const filter = this.selectedFilter();
+    
+    if (filter === 'todos') {
+      // Cargar todos los incidentes
+      const pendientesRequest = this.http.get<ApiResponse>(`${this.apiUrl}/pendientes/asignacion`);
+      const asignadosRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=asignado`);
+      const enProcesoRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=en_proceso`);
+      const resueltosRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=resuelto`);
+      
+      Promise.all([
+        pendientesRequest.toPromise(),
+        asignadosRequest.toPromise(),
+        enProcesoRequest.toPromise(),
+        resueltosRequest.toPromise()
+      ]).then(responses => {
+        const allIncidents = [
+          ...(responses[0]?.data || []),
+          ...(responses[1]?.data || []),
+          ...(responses[2]?.data || []),
+          ...(responses[3]?.data || [])
+        ];
+        this.incidents.set(allIncidents);
+        this.loading.set(false);
+      }).catch(err => {
+        console.error('Error loading all incidents:', err);
+        this.error.set('Error al cargar las solicitudes');
+        this.loading.set(false);
+      });
     } else {
-      url = `${this.apiUrl}?estado=${this.selectedFilter()}`;
-    }
-
-    this.http.get<ApiResponse>(url).subscribe({
-      next: (response) => {
-        this.incidents.set(response.data);
-        this.loading.set(false);
-      },
-      error: (err) => {
-        console.error('Error loading incidents:', err);
-        this.error.set(err.error?.message || 'Error al cargar las solicitudes');
-        this.loading.set(false);
+      // Cargar solo el filtro seleccionado
+      let url: string;
+      if (filter === 'pendiente') {
+        url = `${this.apiUrl}/pendientes/asignacion`;
+      } else {
+        url = `${this.apiUrl}?estado=${filter}`;
       }
-    });
+
+      this.http.get<ApiResponse>(url).subscribe({
+        next: (response) => {
+          this.incidents.set(response.data);
+          this.loading.set(false);
+        },
+        error: (err) => {
+          console.error('Error loading incidents:', err);
+          this.error.set(err.error?.message || 'Error al cargar las solicitudes');
+          this.loading.set(false);
+        }
+      });
+    }
   }
 
   loadAllIncidentsForMap() {
-    // Cargar todos los incidentes sin filtro para mostrar en el mapa
+    // Cargar todos los incidentes para mostrar en el mapa
     console.log('Loading all incidents for map view');
-    this.http.get<ApiResponse>(this.apiUrl).subscribe({
-      next: (response) => {
-        console.log('All incidents loaded:', response.data.length, response.data);
-        this.incidents.set(response.data);
-        
-        // Actualizar marcadores inmediatamente después de cargar los datos
+    
+    const pendientesRequest = this.http.get<ApiResponse>(`${this.apiUrl}/pendientes/asignacion`);
+    const asignadosRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=asignado`);
+    const enProcesoRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=en_proceso`);
+    const resueltosRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=resuelto`);
+    
+    // Cargar todos en paralelo
+    Promise.all([
+      pendientesRequest.toPromise(),
+      asignadosRequest.toPromise(),
+      enProcesoRequest.toPromise(),
+      resueltosRequest.toPromise()
+    ]).then(responses => {
+      // Combinar todos los incidentes
+      const allIncidents = [
+        ...(responses[0]?.data || []),
+        ...(responses[1]?.data || []),
+        ...(responses[2]?.data || []),
+        ...(responses[3]?.data || [])
+      ];
+      
+      console.log('All incidents loaded for map:', allIncidents.length);
+      this.incidents.set(allIncidents);
+      
+      // Actualizar marcadores si estamos en vista de mapa
+      if (this.viewMode() === 'map') {
         setTimeout(() => {
           if (this.map) {
-            console.log('Calling updateMapMarkers after data load');
+            console.log('Updating map markers after loading all incidents');
             this.updateMapMarkers();
           }
         }, 100);
-      },
-      error: (err) => {
-        console.error('Error loading all incidents for map:', err);
       }
+    }).catch(err => {
+      console.error('Error loading all incidents for map:', err);
+      this.error.set('Error al cargar los incidentes para el mapa');
     });
   }
 
   filterIncidents(filter: string) {
     this.selectedFilter.set(filter);
     this.selectedIncident.set(null);
-    this.loadIncidents();
+    
+    // Si estamos en vista de mapa, actualizar el mapa con el filtro
+    if (this.viewMode() === 'map') {
+      this.loadIncidentsForMap();
+    } else {
+      this.loadIncidents();
+    }
+  }
+  
+  loadIncidentsForMap() {
+    // Cargar incidentes según el filtro seleccionado para el mapa
+    const filter = this.selectedFilter();
+    console.log('Loading incidents for map with filter:', filter);
+    
+    if (filter === 'todos') {
+      // Cargar todos los incidentes
+      this.loadAllIncidentsForMap();
+    } else {
+      // Cargar solo el filtro seleccionado
+      let url: string;
+      if (filter === 'pendiente') {
+        url = `${this.apiUrl}/pendientes/asignacion`;
+      } else {
+        url = `${this.apiUrl}?estado=${filter}`;
+      }
+      
+      this.http.get<ApiResponse>(url).subscribe({
+        next: (response) => {
+          console.log('Filtered incidents loaded for map:', response.data.length);
+          this.incidents.set(response.data);
+          
+          // Actualizar marcadores
+          setTimeout(() => {
+            if (this.map) {
+              this.updateMapMarkers();
+            }
+          }, 100);
+        },
+        error: (err) => {
+          console.error('Error loading filtered incidents for map:', err);
+          this.error.set('Error al cargar los incidentes para el mapa');
+        }
+      });
+    }
   }
 
   selectIncident(incident: Incident) {

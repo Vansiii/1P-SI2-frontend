@@ -6,4 +6,9 @@ export interface Environment {
   production: boolean;
   apiBaseUrl: string;
   apiUrl: string;
+  enableLogging: boolean;
+  enableDebugMode: boolean;
+  appName: string;
+  appVersion: string;
+  httpTimeout: number;
 }

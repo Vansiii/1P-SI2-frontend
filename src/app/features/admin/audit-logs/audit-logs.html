@@ -1,0 +1,288 @@
+<div class="audit-container">
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <div class="header-text">
+        <h1 class="page-title">
+          <svg class="title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+          </svg>
+          Bitácora del Sistema
+        </h1>
+        <p class="page-subtitle">Registro completo de todas las acciones realizadas en el sistema</p>
+      </div>
+      <div class="header-stats">
+        <div class="stat-card">
+          <div class="stat-value">{{ totalLogs() }}</div>
+          <div class="stat-label">Total de registros</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ currentPage() }} / {{ totalPages() }}</div>
+          <div class="stat-label">Página actual</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters-section">
+    <div class="filter-group">
+      <label class="filter-label">Acción</label>
+      <select 
+        class="filter-select"
+        [value]="filterAction()"
+        (change)="filterAction.set($any($event.target).value)"
+      >
+        <option value="">Todas las acciones</option>
+        @for (action of actions; track action) {
+          <option [value]="action">{{ action }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">Tipo de Usuario</label>
+      <select 
+        class="filter-select"
+        [value]="filterUserType()"
+        (change)="filterUserType.set($any($event.target).value)"
+      >
+        <option value="">Todos los tipos</option>
+        @for (type of userTypes; track type) {
+          <option [value]="type">{{ getUserTypeLabel(type) }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">Recurso</label>
+      <select 
+        class="filter-select"
+        [value]="filterResourceType()"
+        (change)="filterResourceType.set($any($event.target).value)"
+      >
+        <option value="">Todos los recursos</option>
+        @for (resource of resourceTypes; track resource) {
+          <option [value]="resource">{{ resource }}</option>
+        }
+      </select>
+    </div>
+
+    <button class="clear-filters-button" (click)="clearFilters()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      Limpiar filtros
+    </button>
+  </div>
+
+  <!-- Loading State -->
+  @if (isLoading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Cargando bitácora...</p>
+    </div>
+  }
+
+  <!-- Error State -->
+  @if (errorMessage()) {
+    <div class="error-message">
+      <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 8v4m0 4h.01"/>
+      </svg>
+      <p>{{ errorMessage() }}</p>
+      <button class="retry-button" (click)="loadLogs()">Reintentar</button>
+    </div>
+  }
+
+  <!-- Logs Table -->
+  @if (!isLoading() && !errorMessage()) {
+    <div class="table-container">
+      <table class="logs-table">
+        <thead>
+          <tr>
+            <th>Acción</th>
+            <th>Usuario</th>
+            <th>Recurso</th>
+            <th>IP</th>
+            <th>Fecha y Hora</th>
+            <th>Detalles</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (log of filteredLogs(); track log.id) {
+            <tr class="log-row" (click)="selectLog(log)">
+              <td>
+                <div class="action-cell">
+                  <svg class="action-icon" [class]="getActionClass(log.action)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    @if (log.action === 'LOGIN') {
+                      <path d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>
+                    } @else if (log.action === 'LOGOUT') {
+                      <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    } @else if (log.action === 'CREATE') {
+                      <path d="M12 4v16m8-8H4"/>
+                    } @else if (log.action === 'UPDATE') {
+                      <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    } @else if (log.action === 'DELETE') {
+                      <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    } @else if (log.action === 'VIEW') {
+                      <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    } @else {
+                      <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    }
+                  </svg>
+                  <span class="action-badge" [class]="getActionClass(log.action)">
+                    {{ log.action }}
+                  </span>
+                </div>
+              </td>
+              <td>
+                <div class="user-cell">
+                  <span class="user-type">{{ getUserTypeLabel(log.user_type) }}</span>
+                  <span class="user-id">ID: {{ log.user_id }}</span>
+                </div>
+              </td>
+              <td>
+                <div class="resource-cell">
+                  <span class="resource-type">{{ log.resource_type }}</span>
+                  @if (log.resource_id) {
+                    <span class="resource-id">{{ log.resource_id }}</span>
+                  }
+                </div>
+              </td>
+              <td>
+                <span class="ip-address">{{ log.ip_address }}</span>
+              </td>
+              <td>
+                <span class="timestamp">{{ formatDate(log.timestamp) }}</span>
+              </td>
+              <td>
+                <button class="details-button">
+                  Ver detalles →
+                </button>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="6" class="empty-row">
+                <div class="empty-state">
+                  <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                  </svg>
+                  <p>No se encontraron registros</p>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    @if (totalPages() > 1) {
+      <div class="pagination">
+        <button 
+          class="pagination-button"
+          [disabled]="currentPage() === 1"
+          (click)="previousPage()"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 19l-7-7 7-7"/>
+          </svg>
+          Anterior
+        </button>
+
+        <div class="pagination-info">
+          Página {{ currentPage() }} de {{ totalPages() }}
+        </div>
+
+        <button 
+          class="pagination-button"
+          [disabled]="currentPage() === totalPages()"
+          (click)="nextPage()"
+        >
+          Siguiente
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </div>
+    }
+  }
+
+  <!-- Log Details Modal -->
+  @if (selectedLog()) {
+    <div class="modal-overlay" (click)="closeDetails()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2>Detalles del Registro</h2>
+          <button class="close-button" (click)="closeDetails()">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="detail-section">
+            <h3 class="section-title">Información General</h3>
+            <div class="detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">ID del Registro</span>
+                <span class="detail-value">{{ selectedLog()!.id }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Acción</span>
+                <span class="action-badge" [class]="getActionClass(selectedLog()!.action)">
+                  {{ selectedLog()!.action }}
+                </span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Fecha y Hora</span>
+                <span class="detail-value">{{ formatDate(selectedLog()!.timestamp) }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Dirección IP</span>
+                <span class="detail-value">{{ selectedLog()!.ip_address }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3 class="section-title">Usuario</h3>
+            <div class="detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">ID de Usuario</span>
+                <span class="detail-value">{{ selectedLog()!.user_id }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Tipo de Usuario</span>
+                <span class="detail-value">{{ getUserTypeLabel(selectedLog()!.user_type) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3 class="section-title">Recurso</h3>
+            <div class="detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">Tipo de Recurso</span>
+                <span class="detail-value">{{ selectedLog()!.resource_type }}</span>
+              </div>
+              @if (selectedLog()!.resource_id) {
+                <div class="detail-item">
+                  <span class="detail-label">ID del Recurso</span>
+                  <span class="detail-value">{{ selectedLog()!.resource_id }}</span>
+                </div>
+              }
+            </div>
+          </div>
+
+          @if (selectedLog()!.details) {
+            <div class="detail-section">
+              <h3 class="section-title">Detalles Adicionales</h3>
+              <pre class="details-json">{{ formatDetails(selectedLog()!.details) }}</pre>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+</div>

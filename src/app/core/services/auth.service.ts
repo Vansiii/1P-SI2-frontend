@@ -3,6 +3,7 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, map, Observable, of, switchMap, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { ApiResponse } from '../models/api.models';
 import {
   AppUserProfile,
   AuthTokenResponse,
@@ -23,13 +24,6 @@ interface LoginChallengePayload {
 
 interface LoginChallengeResponse {
   detail?: LoginChallengePayload | string;
-}
-
-interface ApiResponse<T> {
-  data: T;
-  message?: string;
-  request_id?: string;
-  timestamp?: string;
 }
 
 @Injectable({ providedIn: 'root' })
