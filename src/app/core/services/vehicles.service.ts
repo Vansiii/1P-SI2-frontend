@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
+import { ApiResponse } from '../models/api.models';
 
 export interface Vehicle {
   id: number;
@@ -34,12 +35,6 @@ export interface UpdateVehicleRequest {
   color?: string;
   imagen?: string;
   is_active?: boolean;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  message: string;
 }
 
 @Injectable({

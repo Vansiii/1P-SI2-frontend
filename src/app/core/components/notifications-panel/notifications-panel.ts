@@ -43,12 +43,11 @@ export class NotificationsPanelComponent {
     this.error.set(null);
 
     this.incidentsService.getPendingIncidents().subscribe({
-      next: (response) => {
-        const data = response.data || [];
+      next: (data) => {
         this.incidents.set(data);
         this.loading.set(false);
         // Emitir el conteo de pendientes
-        const pendingCount = data.filter(i => i.estado_actual === 'pendiente').length;
+        const pendingCount = data.filter((i: Incident) => i.estado_actual === 'pendiente').length;
         this.countChange.emit(pendingCount);
       },
       error: (err) => {

@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
 import { PasswordInputComponent } from '../../../shared/ui/password-input/password-input';
+import { extractErrorMessage } from '../../../core/utils/error-handler.util';
 
 function matchPasswords(group: AbstractControl): ValidationErrors | null {
   const password = group.get('password')?.value;
@@ -75,7 +76,7 @@ export class ResetPassword implements OnInit {
           this.resetForm.reset();
         },
         error: (error) => {
-          this.setErrorMessage(this.extractErrorMessage(error, 'Hubo un error al intentar cambiar la contraseña.'));
+          this.setErrorMessage(extractErrorMessage(error, 'Hubo un error al intentar cambiar la contraseña.'));
         },
       });
   }
@@ -94,46 +95,5 @@ export class ResetPassword implements OnInit {
     this.successMessageTimeout = setTimeout(() => {
       this.successMessage.set(null);
     }, 5000);
-  }
-
-  private extractErrorMessage(error: unknown, fallbackMessage: string): string {
-    // Handle HttpErrorResponse
-    if (error && typeof error === 'object' && 'error' in error) {
-      const httpError = error as any;
-      
-      // Try to get message from error.error.error.message (backend structure)
-      if (httpError.error && typeof httpError.error === 'object') {
-        const backendError = httpError.error.error;
-        if (backendError && typeof backendError.message === 'string') {
-          return backendError.message;
-        }
-        
-        // Try error.error.message
-        if (typeof httpError.error.message === 'string') {
-          return httpError.error.message;
-        }
-      }
-      
-      // Try to get from error.error.detail (old structure)
-      if (httpError.error && typeof httpError.error.detail !== 'undefined') {
-        const detail = httpError.error.detail;
-        if (typeof detail === 'string') {
-          return detail;
-        }
-        if (detail && typeof detail === 'object' && 'message' in detail) {
-          const detailMessage = (detail as any).message;
-          if (typeof detailMessage === 'string') {
-            return detailMessage;
-          }
-        }
-      }
-      
-      // Try error.message
-      if (typeof httpError.message === 'string' && httpError.message !== 'Http failure response for (unknown url): 0 Unknown Error') {
-        return httpError.message;
-      }
-    }
-
-    return fallbackMessage;
   }
 }
