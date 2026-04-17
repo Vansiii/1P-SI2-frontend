@@ -37,6 +37,35 @@ export interface Incident {
   };
 }
 
+export type IncidentAiAnalysisStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed';
+
+export interface IncidentAiAnalysis {
+  id: number;
+  incident_id: number;
+  status: IncidentAiAnalysisStatus;
+  model_name: string;
+  prompt_version: string;
+  request_hash: string;
+  attempt_number: number;
+  category: string | null;
+  priority: string | null;
+  summary: string | null;
+  is_ambiguous: boolean;
+  confidence: number | null;
+  findings: string[];
+  missing_data: string[];
+  workshop_recommendation: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  latency_ms: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -94,6 +123,42 @@ export class IncidentsService {
    */
   updateIncidentStatus(id: number, estado: string): Observable<Incident> {
     return this.http.patch<ApiResponse<Incident>>(`${this.apiUrl}/${id}/estado`, { estado }).pipe(
+      map(response => response.data)
+    );
+  }
+
+  /**
+   * Gets latest UC10 AI analysis for one incident.
+   */
+  getLatestIncidentAiAnalysis(id: number): Observable<IncidentAiAnalysis> {
+    return this.http.get<ApiResponse<IncidentAiAnalysis>>(`${this.apiUrl}/${id}/analisis-ia`).pipe(
+      map(response => response.data)
+    );
+  }
+
+  /**
+   * Gets UC10 AI analysis history for one incident.
+   */
+  getIncidentAiAnalysisHistory(id: number): Observable<IncidentAiAnalysis[]> {
+    return this.http.get<ApiResponse<IncidentAiAnalysis[]>>(`${this.apiUrl}/${id}/analisis-ia/historial`).pipe(
+      map(response => response.data)
+    );
+  }
+
+  /**
+   * Triggers UC10 AI processing (manual/admin endpoint).
+   */
+  processIncidentWithAi(id: number): Observable<IncidentAiAnalysis> {
+    return this.http.post<ApiResponse<IncidentAiAnalysis>>(`${this.apiUrl}/${id}/procesar-ia`, {}).pipe(
+      map(response => response.data)
+    );
+  }
+
+  /**
+   * Triggers UC10 AI reprocessing (manual/admin endpoint).
+   */
+  reprocessIncidentWithAi(id: number): Observable<IncidentAiAnalysis> {
+    return this.http.post<ApiResponse<IncidentAiAnalysis>>(`${this.apiUrl}/${id}/reprocesar-ia`, {}).pipe(
       map(response => response.data)
     );
   }

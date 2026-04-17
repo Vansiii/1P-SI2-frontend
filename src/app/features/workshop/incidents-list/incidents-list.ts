@@ -1,9 +1,13 @@
 import { Component, OnInit, inject, signal, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router, ActivatedRoute } from '@angular/router';
 import { environment } from '../../../../environments/environment';
+import {
+  IncidentsService,
+  type IncidentAiAnalysis,
+} from '../../../core/services/incidents.service';
 
 interface Incident {
   id: number;
@@ -67,6 +71,7 @@ interface ApiDetailResponse {
 })
 export class IncidentsListComponent implements OnInit {
   private readonly http = inject(HttpClient);
+  private readonly incidentsService = inject(IncidentsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly apiUrl = `${environment.apiUrl}/incidentes`;
@@ -83,6 +88,10 @@ export class IncidentsListComponent implements OnInit {
   rejectReason = signal('');
   isProcessing = signal(false);
   selectedImage = signal<string | null>(null);
+  latestAiAnalysis = signal<IncidentAiAnalysis | null>(null);
+  aiAnalysisHistory = signal<IncidentAiAnalysis[]>([]);
+  aiLoading = signal(false);
+  aiHistoryLoading = signal(false);
   
   // Contadores de estados
   statusCounts = signal({
@@ -363,12 +372,14 @@ export class IncidentsListComponent implements OnInit {
   selectIncident(incident: Incident) {
     this.loadingDetail.set(true);
     this.selectedIncident.set(null);
+    this.clearAiAnalysisState();
     
     // Cargar el detalle completo del incidente
     this.http.get<ApiDetailResponse>(`${this.apiUrl}/${incident.id}`).subscribe({
       next: (response) => {
         this.selectedIncident.set(response.data);
         this.loadingDetail.set(false);
+        this.loadIncidentAiAnalysisData(incident.id);
         if (this.viewMode() === 'map') {
           this.centerMapOnIncident(incident);
         }
@@ -379,6 +390,75 @@ export class IncidentsListComponent implements OnInit {
         this.loadingDetail.set(false);
       }
     });
+  }
+
+  clearAiAnalysisState() {
+    this.latestAiAnalysis.set(null);
+    this.aiAnalysisHistory.set([]);
+    this.aiLoading.set(false);
+    this.aiHistoryLoading.set(false);
+  }
+
+  loadIncidentAiAnalysisData(incidentId: number) {
+    this.aiLoading.set(true);
+    this.aiHistoryLoading.set(true);
+
+    this.incidentsService.getLatestIncidentAiAnalysis(incidentId).subscribe({
+      next: (analysis) => {
+        this.latestAiAnalysis.set(analysis);
+        this.aiLoading.set(false);
+      },
+      error: (err: HttpErrorResponse) => {
+        if (err.status !== 404 && err.status !== 403) {
+          console.error('Error loading latest incident AI analysis:', err);
+        }
+        this.latestAiAnalysis.set(null);
+        this.aiLoading.set(false);
+      }
+    });
+
+    this.incidentsService.getIncidentAiAnalysisHistory(incidentId).subscribe({
+      next: (history) => {
+        this.aiAnalysisHistory.set(history);
+        this.aiHistoryLoading.set(false);
+      },
+      error: (err: HttpErrorResponse) => {
+        if (err.status !== 404 && err.status !== 403) {
+          console.error('Error loading incident AI analysis history:', err);
+        }
+        this.aiAnalysisHistory.set([]);
+        this.aiHistoryLoading.set(false);
+      }
+    });
+  }
+
+  refreshIncidentAiAnalysisData() {
+    const incident = this.selectedIncident();
+    if (!incident || this.aiLoading() || this.aiHistoryLoading()) {
+      return;
+    }
+
+    this.loadIncidentAiAnalysisData(incident.id);
+  }
+
+  getAiStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      pending: 'Pendiente',
+      processing: 'Procesando',
+      completed: 'Completado',
+      failed: 'Fallido'
+    };
+    return labels[status] || status;
+  }
+
+  getAiStatusColor(status: string): string {
+    const colors: Record<string, string> = {
+      pending: 'warning',
+      processing: 'primary',
+      completed: 'success',
+      failed: 'danger'
+    };
+    return colors[status] || 'secondary';
   }
 
   initMap() {
