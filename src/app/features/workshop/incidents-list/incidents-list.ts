@@ -89,9 +89,7 @@ export class IncidentsListComponent implements OnInit {
   isProcessing = signal(false);
   selectedImage = signal<string | null>(null);
   latestAiAnalysis = signal<IncidentAiAnalysis | null>(null);
-  aiAnalysisHistory = signal<IncidentAiAnalysis[]>([]);
   aiLoading = signal(false);
-  aiHistoryLoading = signal(false);
   
   // Contadores de estados
   statusCounts = signal({
@@ -394,14 +392,11 @@ export class IncidentsListComponent implements OnInit {
 
   clearAiAnalysisState() {
     this.latestAiAnalysis.set(null);
-    this.aiAnalysisHistory.set([]);
     this.aiLoading.set(false);
-    this.aiHistoryLoading.set(false);
   }
 
   loadIncidentAiAnalysisData(incidentId: number) {
     this.aiLoading.set(true);
-    this.aiHistoryLoading.set(true);
 
     this.incidentsService.getLatestIncidentAiAnalysis(incidentId).subscribe({
       next: (analysis) => {
@@ -416,29 +411,31 @@ export class IncidentsListComponent implements OnInit {
         this.aiLoading.set(false);
       }
     });
-
-    this.incidentsService.getIncidentAiAnalysisHistory(incidentId).subscribe({
-      next: (history) => {
-        this.aiAnalysisHistory.set(history);
-        this.aiHistoryLoading.set(false);
-      },
-      error: (err: HttpErrorResponse) => {
-        if (err.status !== 404 && err.status !== 403) {
-          console.error('Error loading incident AI analysis history:', err);
-        }
-        this.aiAnalysisHistory.set([]);
-        this.aiHistoryLoading.set(false);
-      }
-    });
   }
 
   refreshIncidentAiAnalysisData() {
     const incident = this.selectedIncident();
-    if (!incident || this.aiLoading() || this.aiHistoryLoading()) {
+    if (!incident || this.aiLoading()) {
       return;
     }
 
     this.loadIncidentAiAnalysisData(incident.id);
+  }
+
+  formatAiConfidence(confidence: number | null): string {
+    if (confidence === null || Number.isNaN(confidence)) {
+      return 'N/D';
+    }
+
+    const normalizedConfidence = Math.max(0, Math.min(1, confidence));
+    return `${Math.round(normalizedConfidence * 100)}%`;
+  }
+
+  getVisibleAiItems(items: string[] | null | undefined, maxItems = 6): string[] {
+    return (items ?? [])
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .slice(0, maxItems);
   }
 
   getAiStatusLabel(status: string): string {

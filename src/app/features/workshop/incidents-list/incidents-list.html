@@ -286,62 +286,89 @@
                 </div>
               </div>
 
-              <div class="detail-section">
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-                  <h3>Estado de Análisis IA</h3>
-                  <button class="btn btn-secondary" (click)="refreshIncidentAiAnalysisData()" [disabled]="aiLoading() || aiHistoryLoading()">
+              <div class="detail-section ai-detail-section">
+                <div class="ai-header-row">
+                  <h3>Detalle IA</h3>
+                  <button class="btn btn-secondary" (click)="refreshIncidentAiAnalysisData()" [disabled]="aiLoading()">
                     Actualizar
                   </button>
                 </div>
 
                 @if (aiLoading()) {
-                  <p>Cargando estado de análisis IA...</p>
+                  <p class="ai-loading-text">Cargando detalle IA...</p>
                 } @else if (latestAiAnalysis()) {
-                  <div class="info-grid">
-                    <div class="info-item">
-                      <span class="info-label">Estado</span>
+                  <div class="ai-detail-card">
+                    <div class="ai-tags">
                       <span class="status-badge" [class]="'status-' + getAiStatusColor(latestAiAnalysis()!.status)">
                         {{ getAiStatusLabel(latestAiAnalysis()!.status) }}
                       </span>
-                    </div>
-                    <div class="info-item">
-                      <span class="info-label">Intento</span>
-                      <span class="info-value">#{{ latestAiAnalysis()!.attempt_number }}</span>
-                    </div>
-                    <div class="info-item">
-                      <span class="info-label">Modelo</span>
-                      <span class="info-value">{{ latestAiAnalysis()!.model_name }}</span>
-                    </div>
-                    <div class="info-item">
-                      <span class="info-label">Actualizado</span>
-                      <span class="info-value">{{ formatFullDate(latestAiAnalysis()!.updated_at) }}</span>
-                    </div>
-                  </div>
 
-                  @if (latestAiAnalysis()!.summary) {
-                    <p style="margin-top: 12px;">{{ latestAiAnalysis()!.summary }}</p>
-                  }
-                } @else {
-                  <p>Aún no hay análisis IA disponible para este incidente.</p>
-                }
-
-                @if (aiHistoryLoading()) {
-                  <p style="margin-top: 12px;">Cargando historial de análisis IA...</p>
-                } @else if (aiAnalysisHistory().length > 0) {
-                  <div style="margin-top: 12px;">
-                    <h4 style="margin-bottom: 8px;">Historial ({{ aiAnalysisHistory().length }})</h4>
-                    <div class="audios-list">
-                      @for (analysis of aiAnalysisHistory().slice(0, 5); track analysis.id) {
-                        <div class="audio-item" style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-                          <span>Intento #{{ analysis.attempt_number }}</span>
-                          <span class="status-badge" [class]="'status-' + getAiStatusColor(analysis.status)">
-                            {{ getAiStatusLabel(analysis.status) }}
-                          </span>
-                          <span class="info-value">{{ formatDate(analysis.created_at) }}</span>
-                        </div>
+                      @if (latestAiAnalysis()!.confidence !== null) {
+                        <span class="ai-tag ai-tag-info">
+                          Confianza: {{ formatAiConfidence(latestAiAnalysis()!.confidence) }}
+                        </span>
                       }
+
+                      @if (latestAiAnalysis()!.category) {
+                        <span class="ai-tag ai-tag-primary">
+                          Categoría: {{ latestAiAnalysis()!.category }}
+                        </span>
+                      }
+
+                      <span
+                        class="ai-tag"
+                        [class.ai-tag-warning]="latestAiAnalysis()!.is_ambiguous"
+                        [class.ai-tag-success]="!latestAiAnalysis()!.is_ambiguous"
+                      >
+                        {{ latestAiAnalysis()!.is_ambiguous ? 'Caso ambiguo' : 'Caso claro' }}
+                      </span>
                     </div>
+
+                    @if (latestAiAnalysis()!.summary && latestAiAnalysis()!.summary!.trim().length > 0) {
+                      <div class="ai-block">
+                        <h4 class="ai-block-title">Resumen técnico</h4>
+                        <p class="ai-summary">{{ latestAiAnalysis()!.summary }}</p>
+                      </div>
+                    }
+
+                    @if (getVisibleAiItems(latestAiAnalysis()!.findings, 6).length > 0) {
+                      <div class="ai-block">
+                        <h4 class="ai-block-title">Hallazgos relevantes</h4>
+                        <ul class="ai-list">
+                          @for (finding of getVisibleAiItems(latestAiAnalysis()!.findings, 6); track finding) {
+                            <li>{{ finding }}</li>
+                          }
+                        </ul>
+                      </div>
+                    }
+
+                    @if (latestAiAnalysis()!.workshop_recommendation && latestAiAnalysis()!.workshop_recommendation!.trim().length > 0) {
+                      <div class="ai-block">
+                        <h4 class="ai-block-title">Recomendación inicial</h4>
+                        <p class="ai-summary">{{ latestAiAnalysis()!.workshop_recommendation }}</p>
+                      </div>
+                    }
+
+                    @if (getVisibleAiItems(latestAiAnalysis()!.missing_data, 5).length > 0) {
+                      <div class="ai-block">
+                        <h4 class="ai-block-title">Información útil pendiente</h4>
+                        <ul class="ai-list">
+                          @for (missingItem of getVisibleAiItems(latestAiAnalysis()!.missing_data, 5); track missingItem) {
+                            <li>{{ missingItem }}</li>
+                          }
+                        </ul>
+                      </div>
+                    }
+
+                    @if (latestAiAnalysis()!.status === 'failed' && latestAiAnalysis()!.error_message) {
+                      <div class="ai-block ai-error-block">
+                        <h4 class="ai-block-title">Detalle de error IA</h4>
+                        <p class="ai-summary">{{ latestAiAnalysis()!.error_message }}</p>
+                      </div>
+                    }
                   </div>
+                } @else {
+                  <p class="ai-empty-text">Aún no hay detalle IA disponible para este incidente.</p>
                 }
               </div>
 

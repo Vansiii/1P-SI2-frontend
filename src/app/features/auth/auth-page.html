@@ -4,10 +4,8 @@
     <div class="brand-grid"></div>
     <div class="brand-content">
       <div class="brand-logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-        </svg>
-        <span>Emergency Suite</span>
+        <img src="/logo.png" alt="Logo MecánicoYa" />
+        <span>MecánicoYa</span>
       </div>
       <div>
         <h1 class="brand-heading">Autenticación segura para operaciones críticas.</h1>
@@ -29,6 +27,10 @@
     <div class="form-container">
       
       <header class="form-header">
+        <div class="form-brand" aria-label="Marca oficial MecánicoYa">
+          <img class="form-brand-logo" src="/logo.png" alt="Logo MecánicoYa" />
+          <span class="form-brand-name">MecánicoYa</span>
+        </div>
         <a class="home-link" routerLink="/">← Ir al home</a>
         <h2 class="auth-title">
           @if (mode() === 'login') {
