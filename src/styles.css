@@ -6,6 +6,9 @@
 @import '@fontsource/dm-sans/500.css';
 @import '@fontsource/dm-sans/700.css';
 
+/* Leaflet CSS */
+@import 'leaflet/dist/leaflet.css';
+
 :root {
   --primary: #f97316;
   --primary-hover: #ea580c;

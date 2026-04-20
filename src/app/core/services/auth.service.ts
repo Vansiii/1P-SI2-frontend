@@ -32,20 +32,58 @@ export class AuthService {
   private readonly router = inject(Router);
   private readonly apiBaseUrl = environment.apiBaseUrl;
 
-  private readonly accessTokenSignal = signal<string | null>(localStorage.getItem(ACCESS_TOKEN_KEY));
-  private readonly refreshTokenSignal = signal<string | null>(localStorage.getItem(REFRESH_TOKEN_KEY));
+  private readonly accessTokenSignal = signal<string | null>(null);
+  private readonly refreshTokenSignal = signal<string | null>(null);
   private readonly userSignal = signal<AppUserProfile | null>(null);
+  private readonly isRestoringSession = signal<boolean>(false);
 
   readonly user = this.userSignal.asReadonly();
-  readonly isAuthenticated = computed(() => this.accessTokenSignal() !== null);
+  readonly isAuthenticated = computed(() => {
+    const token = this.accessTokenSignal();
+    const user = this.userSignal();
+    const restoring = this.isRestoringSession();
+    
+    // Si está restaurando sesión y tiene token, considerar autenticado temporalmente
+    if (restoring && token !== null) {
+      return true;
+    }
+    
+    // De lo contrario, requiere token Y usuario
+    return token !== null && user !== null;
+  });
+
+  /**
+   * Get current user (computed signal)
+   */
+  currentUser = computed(() => this.userSignal());
 
   restoreSession(): void {
-    if (!this.accessTokenSignal()) {
+    // Cargar tokens desde localStorage
+    const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    
+    // Si no hay tokens, limpiar todo
+    if (!accessToken || !refreshToken) {
+      this.clearSession();
       return;
     }
 
+    // Establecer los tokens en los signals
+    this.accessTokenSignal.set(accessToken);
+    this.refreshTokenSignal.set(refreshToken);
+    
+    // Marcar que estamos restaurando sesión
+    this.isRestoringSession.set(true);
+
+    // Intentar obtener el usuario actual
     this.fetchCurrentUser().subscribe({
+      next: () => {
+        // Sesión restaurada exitosamente
+        this.isRestoringSession.set(false);
+      },
       error: () => {
+        // Si falla, limpiar la sesión inválida
+        this.isRestoringSession.set(false);
         this.clearSession();
       },
     });

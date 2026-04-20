@@ -24,10 +24,12 @@ export class PrivateShellComponent {
   readonly notificationCount = signal(0);
 
   constructor() {
-    // Cargar contador inicial de notificaciones para talleres
+    // Cargar contador inicial de notificaciones para talleres y administradores
     effect(() => {
       if (this.isWorkshop()) {
         this.loadNotificationCount();
+      } else if (this.isAdmin()) {
+        this.loadAdminNotificationCount();
       }
     }, { allowSignalWrites: true });
   }
@@ -40,6 +42,19 @@ export class PrivateShellComponent {
       },
       error: (err) => {
         console.error('Error loading notification count:', err);
+        this.notificationCount.set(0);
+      }
+    });
+  }
+
+  private loadAdminNotificationCount(): void {
+    // Cargar incidentes sin taller asignado (sin_taller_disponible)
+    this.incidentsService.getUnassignedIncidents().subscribe({
+      next: (data) => {
+        this.notificationCount.set(data.length);
+      },
+      error: (err) => {
+        console.error('Error loading admin notification count:', err);
         this.notificationCount.set(0);
       }
     });

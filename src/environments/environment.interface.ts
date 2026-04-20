@@ -6,9 +6,22 @@ export interface Environment {
   production: boolean;
   apiBaseUrl: string;
   apiUrl: string;
+  wsUrl?: string;
   enableLogging: boolean;
   enableDebugMode: boolean;
   appName: string;
   appVersion: string;
   httpTimeout: number;
+  
+  // Firebase Cloud Messaging
+  firebase?: {
+    apiKey: string;
+    authDomain: string;
+    projectId: string;
+    storageBucket: string;
+    messagingSenderId: string;
+    appId: string;
+    measurementId?: string;
+  };
+  firebaseVapidKey?: string;
 }

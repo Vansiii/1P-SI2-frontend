@@ -240,6 +240,22 @@
   letter-spacing: 0.05em;
 }
 
+.nav-badge.danger {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  animation: pulse-danger 2s ease-in-out infinite;
+}
+
+@keyframes pulse-danger {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0);
+  }
+}
+
 /* Sidebar Footer */
 .sidebar-footer {
   padding: 0.875rem;
@@ -300,6 +316,7 @@
   grid-template-rows: 4.5rem 1fr;
   min-width: 0;
   height: 100dvh;
+  overflow: hidden; /* Prevent content from overflowing */
 }
 
 /* ========== TOPBAR ========== */
@@ -668,7 +685,19 @@
 /* ========== CONTENT AREA ========== */
 .app-content {
   overflow-y: auto;
+  overflow-x: hidden; /* Prevent horizontal overflow */
   padding: 2rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* Ensure content respects grid layout */
+.app-content > * {
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden; /* Prevent children from overflowing horizontally */
 }
 
 .app-content::-webkit-scrollbar {

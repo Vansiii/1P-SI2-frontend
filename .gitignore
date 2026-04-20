@@ -48,5 +48,10 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Keep example file
+# Generated files
+/public/firebase-config.js
+/public/firebase-messaging-sw.js
+
+# Keep example files
 !.env.example
+!/public/firebase-messaging-sw.js.example

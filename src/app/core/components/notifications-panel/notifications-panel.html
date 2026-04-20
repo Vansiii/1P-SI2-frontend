@@ -46,10 +46,10 @@
       <div class="notifications-list">
         @for (incident of incidents(); track incident.id) {
           <a 
-            [routerLink]="['/workshop/incidents']"
-            [queryParams]="{incidentId: incident.id}"
+            [routerLink]="isAdmin() ? ['/admin/incident', incident.id] : ['/workshop/incidents']"
+            [queryParams]="isAdmin() ? {} : {incidentId: incident.id}"
             class="notification-item" 
-            [class.unread]="incident.estado_actual === 'pendiente'"
+            [class.unread]="incident.estado_actual === 'pendiente' || incident.estado_actual === 'sin_taller_disponible'"
             (click)="close.emit()"
           >
             <div class="notification-icon" [style.background]="getStatusColor(incident.estado_actual) + '15'" [style.color]="getStatusColor(incident.estado_actual)">
@@ -118,7 +118,11 @@
 
   @if (!loading() && incidents().length > 0) {
     <div class="panel-footer">
-      <a routerLink="/workshop/incidents" class="view-all-btn" (click)="close.emit()">
+      <a 
+        [routerLink]="isAdmin() ? '/admin/unassigned-incidents' : '/workshop/incidents'" 
+        class="view-all-btn" 
+        (click)="close.emit()"
+      >
         Ver todas las solicitudes
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="9 18 15 12 9 6"/>

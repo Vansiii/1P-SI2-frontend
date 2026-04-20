@@ -1,0 +1,145 @@
+<div class="unassigned-container">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <div class="header-text">
+        <h1 class="page-title">
+          <svg class="title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          Solicitudes Entrantes
+        </h1>
+        <p class="page-subtitle">Incidentes que no encontraron taller disponible y requieren intervención manual</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-secondary" (click)="refreshIncidents()" [disabled]="loading()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Actualizar
+        </button>
+      </div>
+    </div>
+    <div class="header-stats">
+      <div class="stat-card alert">
+        <div class="stat-value">{{ incidentCount() }}</div>
+        <div class="stat-label">Sin Taller Disponible</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Alert -->
+  @if (error()) {
+    <div class="alert alert-error">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 8v4m0 4h.01"/>
+      </svg>
+      <div class="alert-content">
+        <p class="alert-title">Error</p>
+        <p class="alert-message">{{ error() }}</p>
+      </div>
+      <button class="alert-close" (click)="error.set(null)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  }
+
+  <!-- Loading Overlay -->
+  @if (loading()) {
+    <div class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner">
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+        </div>
+        <p class="loading-text">Cargando solicitudes...</p>
+      </div>
+    </div>
+  }
+
+  <!-- Main Content -->
+  <div class="main-content">
+    @if (incidents().length === 0 && !loading()) {
+      <div class="empty-state">
+        <div class="empty-icon success">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h3 class="empty-title">¡Todo en orden!</h3>
+        <p class="empty-description">No hay incidentes sin taller disponible en este momento</p>
+      </div>
+    } @else {
+      <div class="incidents-grid">
+        @for (incident of incidents(); track incident.id) {
+          <div class="incident-card" [class.urgent]="!isIncidentTimedOut(incident)" [class.timeout]="isIncidentTimedOut(incident)">
+            <div class="incident-header">
+              <div class="header-left">
+                <span class="incident-id">#{{ incident.id }}</span>
+                @if (isIncidentTimedOut(incident)) {
+                  <span class="status-badge status-timeout">TIMEOUT</span>
+                } @else {
+                  <span class="status-badge status-danger">Sin Taller</span>
+                }
+              </div>
+              <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+            </div>
+            
+            <p class="incident-description">{{ truncate(incident.descripcion, 120) }}</p>
+            
+            <div class="incident-meta">
+              @if (incident.prioridad_ia) {
+                <span class="meta-badge priority-{{ getPrioridadColor(incident.prioridad_ia) }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  </svg>
+                  {{ getPrioridadLabel(incident.prioridad_ia) }}
+                </span>
+              }
+              @if (incident.categoria_ia) {
+                <span class="meta-badge category">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                  </svg>
+                  {{ incident.categoria_ia }}
+                </span>
+              }
+            </div>
+
+            @if (incident.direccion_referencia) {
+              <div class="incident-location">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+                <span>{{ truncate(incident.direccion_referencia, 50) }}</span>
+              </div>
+            }
+            
+            <div class="incident-footer">
+              <div class="incident-time">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                {{ formatDate(incident.created_at) }}
+              </div>
+              <button class="btn-view-detail" (click)="viewIncidentDetail(incident)">
+                Ver Detalle
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

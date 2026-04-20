@@ -66,6 +66,14 @@ export const routes: Routes = [
       {
         path: 'audit-logs',
         loadComponent: () => import('./features/admin/audit-logs/audit-logs').then(m => m.AuditLogsComponent)
+      },
+      {
+        path: 'unassigned-incidents',
+        loadComponent: () => import('./features/admin/unassigned-incidents/unassigned-incidents').then(m => m.UnassignedIncidentsComponent)
+      },
+      {
+        path: 'incident/:id',
+        loadComponent: () => import('./features/admin/incident-detail-admin/incident-detail-admin').then(m => m.IncidentDetailAdminComponent)
       }
     ]
   },
@@ -77,6 +85,20 @@ export const routes: Routes = [
       { 
         path: 'incidents', 
         loadComponent: () => import('./features/workshop/incidents-list/incidents-list').then(m => m.IncidentsListComponent)
+      },
+      { 
+        path: 'technicians', 
+        loadComponent: () => import('./features/workshop/technicians-management/technicians-management').then(m => m.TechniciansManagementComponent)
+      }
+    ]
+  },
+  {
+    path: 'tracking',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: 'incident/:id',
+        loadComponent: () => import('./features/tracking/incident-tracking-view.component').then(m => m.IncidentTrackingViewComponent)
       }
     ]
   },
