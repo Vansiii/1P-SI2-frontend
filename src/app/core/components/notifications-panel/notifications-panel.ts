@@ -23,16 +23,18 @@ export class NotificationsPanelComponent {
 
   readonly user = this.authService.user;
   readonly isWorkshop = computed(() => this.user()?.user_type === 'workshop');
+  readonly isAdmin = computed(() => this.user()?.user_type === 'admin');
+  readonly shouldShowNotifications = computed(() => this.isWorkshop() || this.isAdmin());
 
   readonly unreadCount = computed(() => {
     // Por ahora, todos los incidentes pendientes se consideran "no leídos"
-    return this.incidents().filter(i => i.estado_actual === 'pendiente').length;
+    return this.incidents().filter(i => i.estado_actual === 'pendiente' || i.estado_actual === 'sin_taller_disponible').length;
   });
 
   constructor() {
     // Cargar incidentes al inicializar
     effect(() => {
-      if (this.isWorkshop()) {
+      if (this.shouldShowNotifications()) {
         this.loadIncidents();
       }
     }, { allowSignalWrites: true });
@@ -42,13 +44,20 @@ export class NotificationsPanelComponent {
     this.loading.set(true);
     this.error.set(null);
 
-    this.incidentsService.getPendingIncidents().subscribe({
+    // Administradores ven incidentes sin taller, talleres ven pendientes
+    const observable = this.isAdmin() 
+      ? this.incidentsService.getUnassignedIncidents()
+      : this.incidentsService.getPendingIncidents();
+
+    observable.subscribe({
       next: (data) => {
         this.incidents.set(data);
         this.loading.set(false);
-        // Emitir el conteo de pendientes
-        const pendingCount = data.filter((i: Incident) => i.estado_actual === 'pendiente').length;
-        this.countChange.emit(pendingCount);
+        // Emitir el conteo de pendientes/sin taller
+        const count = this.isAdmin()
+          ? data.filter((i: Incident) => i.estado_actual === 'sin_taller_disponible').length
+          : data.filter((i: Incident) => i.estado_actual === 'pendiente').length;
+        this.countChange.emit(count);
       },
       error: (err) => {
         console.error('Error loading incidents:', err);

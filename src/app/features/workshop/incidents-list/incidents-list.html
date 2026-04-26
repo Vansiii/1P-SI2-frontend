@@ -206,26 +206,46 @@
         <!-- Map View -->
         <div class="map-view">
           <div id="map" class="map"></div>
-          @if (incidents().length > 0) {
-            <div class="map-legend">
-              <div class="legend-item">
-                <span class="legend-dot" style="background: #f59e0b;"></span>
-                <span>Pendientes</span>
+          
+          <!-- Legend Toggle Button -->
+          <div class="legend-toggle-container">
+            <button class="legend-toggle-btn" (click)="toggleLegend()" [class.active]="showLegend()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <circle cx="12" cy="5" r="1"/>
+                <circle cx="12" cy="19" r="1"/>
+                <circle cx="5" cy="12" r="1"/>
+                <circle cx="19" cy="12" r="1"/>
+              </svg>
+            </button>
+            
+            <!-- Legend Panel -->
+            @if (showLegend()) {
+              <div class="legend-panel">
+                <div class="legend-header">
+                  <h4>Estados</h4>
+                </div>
+                <div class="legend-items">
+                  <div class="legend-item">
+                    <span class="legend-dot" style="background: #f59e0b;"></span>
+                    <span>Pendientes</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-dot" style="background: #3b82f6;"></span>
+                    <span>Asignadas</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-dot" style="background: #8b5cf6;"></span>
+                    <span>En Proceso</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-dot" style="background: #10b981;"></span>
+                    <span>Resueltas</span>
+                  </div>
+                </div>
               </div>
-              <div class="legend-item">
-                <span class="legend-dot" style="background: #3b82f6;"></span>
-                <span>Asignadas</span>
-              </div>
-              <div class="legend-item">
-                <span class="legend-dot" style="background: #8b5cf6;"></span>
-                <span>En Proceso</span>
-              </div>
-              <div class="legend-item">
-                <span class="legend-dot" style="background: #10b981;"></span>
-                <span>Resueltas</span>
-              </div>
-            </div>
-          }
+            }
+          </div>
         </div>
       } @else if (selectedIncident()) {
         <!-- Detail View -->
@@ -277,6 +297,26 @@
                     <div class="info-item">
                       <span class="info-label">Categoría</span>
                       <span class="info-value">{{ selectedIncident()!.categoria_ia }}</span>
+                    </div>
+                  }
+                  @if (selectedIncident()!.technician) {
+                    <div class="info-item">
+                      <span class="info-label">Técnico Asignado</span>
+                      <span class="info-value">
+                        {{ selectedIncident()!.technician!.first_name }} {{ selectedIncident()!.technician!.last_name }}
+                      </span>
+                    </div>
+                  }
+                  @if (selectedIncident()!.technician?.phone) {
+                    <div class="info-item">
+                      <span class="info-label">Teléfono Técnico</span>
+                      <span class="info-value">{{ selectedIncident()!.technician!.phone }}</span>
+                    </div>
+                  }
+                  @if (selectedIncident()!.workshop) {
+                    <div class="info-item">
+                      <span class="info-label">Taller</span>
+                      <span class="info-value">{{ selectedIncident()!.workshop!.workshop_name }}</span>
                     </div>
                   }
                   <div class="info-item">
@@ -424,7 +464,7 @@
 
               <div class="detail-actions">
                 @if (selectedIncident()!.estado_actual === 'pendiente') {
-                  <button class="btn btn-primary" (click)="acceptIncident(selectedIncident()!)" [disabled]="isProcessing()">
+                  <button class="btn btn-primary" (click)="openAcceptModal(selectedIncident()!)" [disabled]="isProcessing()">
                     @if (isProcessing()) {
                       <div class="btn-spinner"></div>
                     } @else {
@@ -442,7 +482,24 @@
                   </button>
                 }
                 @if (selectedIncident()!.estado_actual === 'asignado') {
-                  <button class="btn btn-primary">Asignar Técnico</button>
+                  <button class="btn btn-primary" (click)="openAssignTechnicianModal(selectedIncident()!)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                    Asignar Técnico
+                  </button>
+                }
+                @if (selectedIncident()!.estado_actual === 'asignado' || selectedIncident()!.estado_actual === 'en_proceso') {
+                  <button class="btn btn-tracking" (click)="openTrackingView(selectedIncident()!)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left: 4px;">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Ver Seguimiento y Chat
+                  </button>
                 }
               </div>
             </div>
@@ -450,7 +507,7 @@
         </div>
       } @else {
         <!-- List View -->
-        @if (incidents().length === 0) {
+        @if (filteredIncidents().length === 0) {
           <div class="empty-state">
             <div class="empty-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -463,11 +520,22 @@
           </div>
         } @else {
           <div class="incidents-grid">
-            @for (incident of incidents(); track incident.id) {
-              <div class="incident-card" (click)="selectIncident(incident)">
+            @for (incident of filteredIncidents(); track incident.id) {
+              <div class="incident-card" (click)="selectIncident(incident)" [class.timeout-warning]="isIncidentTimedOut(incident)">
                 <div class="incident-header">
                   <span class="incident-id">#{{ incident.id }}</span>
-                  <span class="status-dot" [class]="'status-' + getEstadoColor(incident.estado_actual)"></span>
+                  <div class="header-badges">
+                    @if (isIncidentTimedOut(incident)) {
+                      <span class="timeout-badge" title="Tiempo de respuesta agotado">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <circle cx="12" cy="12" r="10"/>
+                          <path d="M12 6v6l4 2"/>
+                        </svg>
+                        Timeout
+                      </span>
+                    }
+                    <span class="status-dot" [class]="'status-' + getEstadoColor(incident.estado_actual)"></span>
+                  </div>
                 </div>
                 <p class="incident-description">{{ truncate(incident.descripcion, 100) }}</p>
                 <div class="incident-meta">
@@ -538,6 +606,198 @@
               <div class="btn-spinner"></div>
             }
             Confirmar Rechazo
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Accept Modal -->
+  @if (showAcceptModal()) {
+    <div class="modal-overlay" (click)="closeAcceptModal()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>Aceptar Solicitud</h3>
+          <button class="close-btn" (click)="closeAcceptModal()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          @if (latestAiAnalysis() && latestAiAnalysis()!.workshop_recommendation) {
+            <div class="ai-recommendation-box">
+              <div class="ai-recommendation-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+                <h4>Recomendación de la IA</h4>
+              </div>
+              <p class="ai-recommendation-text">{{ latestAiAnalysis()!.workshop_recommendation }}</p>
+            </div>
+            
+            <div class="modal-options">
+              <label class="option-card" [class.selected]="acceptWithSuggestedTechnician()">
+                <input 
+                  type="radio" 
+                  name="accept-option" 
+                  [checked]="acceptWithSuggestedTechnician()"
+                  (change)="acceptWithSuggestedTechnician.set(true)"
+                  [disabled]="isProcessing()">
+                <div class="option-content">
+                  <div class="option-icon success">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M5 13l4 4L19 7"/>
+                    </svg>
+                  </div>
+                  <div class="option-text">
+                    <h5>Aceptar con técnico sugerido</h5>
+                    @if (selectedIncident()?.suggested_technician) {
+                      <p><strong>Técnico: {{ selectedIncident()!.suggested_technician!.first_name }} {{ selectedIncident()!.suggested_technician!.last_name }}</strong></p>
+                      <p style="font-size: 0.85em; color: #6b7280; margin-top: 4px;">
+                        Distancia: {{ selectedIncident()!.suggested_technician!.distance_km.toFixed(2) }} km • 
+                        Score: {{ (selectedIncident()!.suggested_technician!.final_score * 100).toFixed(0) }}%
+                      </p>
+                    } @else {
+                      <p>El incidente pasará a estado "En Proceso" con el técnico recomendado por la IA</p>
+                    }
+                  </div>
+                </div>
+              </label>
+              
+              <label class="option-card" [class.selected]="!acceptWithSuggestedTechnician()">
+                <input 
+                  type="radio" 
+                  name="accept-option" 
+                  [checked]="!acceptWithSuggestedTechnician()"
+                  (change)="acceptWithSuggestedTechnician.set(false)"
+                  [disabled]="isProcessing()">
+                <div class="option-content">
+                  <div class="option-icon warning">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                  </div>
+                  <div class="option-text">
+                    <h5>Asignar técnico manualmente</h5>
+                    <p>El incidente quedará en estado "Asignado" y podrás elegir el técnico después</p>
+                  </div>
+                </div>
+              </label>
+            </div>
+          } @else {
+            <p class="modal-description">¿Estás seguro de que deseas aceptar esta solicitud?</p>
+            <p class="modal-hint">El incidente quedará asignado a tu taller y podrás asignar un técnico manualmente.</p>
+          }
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeAcceptModal()" [disabled]="isProcessing()">
+            Cancelar
+          </button>
+          <button 
+            class="btn btn-primary" 
+            (click)="acceptIncident()" 
+            [disabled]="isProcessing()">
+            @if (isProcessing()) {
+              <div class="btn-spinner"></div>
+            }
+            Confirmar Aceptación
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Assign Technician Modal -->
+  @if (showAssignTechnicianModal()) {
+    <div class="modal-overlay" (click)="closeAssignTechnicianModal()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>Asignar Técnico</h3>
+          <button class="close-btn" (click)="closeAssignTechnicianModal()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">Selecciona un técnico disponible para asignar a este incidente:</p>
+          
+          @if (loadingTechnicians()) {
+            <div class="loading-technicians">
+              <div class="loading-spinner">
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+              </div>
+              <p>Cargando técnicos disponibles...</p>
+            </div>
+          } @else if (availableTechnicians().length === 0) {
+            <div class="empty-technicians">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+              </svg>
+              <p>No hay técnicos disponibles en este momento</p>
+            </div>
+          } @else {
+            <div class="technicians-list">
+              @for (technician of availableTechnicians(); track technician.id) {
+                <label class="technician-card" [class.selected]="selectedTechnicianId() === technician.id">
+                  <input 
+                    type="radio" 
+                    name="technician" 
+                    [value]="technician.id"
+                    [checked]="selectedTechnicianId() === technician.id"
+                    (change)="selectedTechnicianId.set(technician.id)"
+                    [disabled]="isProcessing()">
+                  <div class="technician-content">
+                    <div class="technician-avatar">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                      </svg>
+                    </div>
+                    <div class="technician-info">
+                      <h5>{{ technician.first_name }} {{ technician.last_name }}</h5>
+                      <div class="technician-status">
+                        @if (technician.is_online) {
+                          <span class="status-badge online">
+                            <span class="status-dot"></span>
+                            En línea
+                          </span>
+                        } @else {
+                          <span class="status-badge offline">
+                            <span class="status-dot"></span>
+                            Desconectado
+                          </span>
+                        }
+                        @if (technician.is_available) {
+                          <span class="status-badge available">Disponible</span>
+                        }
+                      </div>
+                    </div>
+                    <div class="technician-select">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 13l4 4L19 7"/>
+                      </svg>
+                    </div>
+                  </div>
+                </label>
+              }
+            </div>
+          }
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" (click)="closeAssignTechnicianModal()" [disabled]="isProcessing()">
+            Cancelar
+          </button>
+          <button 
+            class="btn btn-primary" 
+            (click)="assignTechnician()" 
+            [disabled]="isProcessing() || !selectedTechnicianId() || availableTechnicians().length === 0">
+            @if (isProcessing()) {
+              <div class="btn-spinner"></div>
+            }
+            Asignar Técnico
           </button>
         </div>
       </div>

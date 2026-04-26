@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, effect, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
@@ -7,7 +7,34 @@ import { environment } from '../../../../environments/environment';
 import {
   IncidentsService,
   type IncidentAiAnalysis,
+  type Incident as ServiceIncident,
 } from '../../../core/services/incidents.service';
+
+interface TechnicianBasicInfo {
+  id: number;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+}
+
+interface WorkshopBasicInfo {
+  id: number;
+  workshop_name: string;
+  phone: string | null;
+}
+
+interface SuggestedTechnicianInfo {
+  technician_id: number;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  final_score: number;
+  distance_km: number;
+  ai_reasoning: string | null;
+  assignment_strategy: string;
+  status?: string; // pending, timeout, rejected, accepted
+  timeout_at?: string; // Timestamp cuando expira el timeout
+}
 
 interface Incident {
   id: number;
@@ -21,6 +48,13 @@ interface Incident {
   longitude: number;
   client_id: number;
   vehiculo_id: number;
+  taller_id: number | null;
+  tecnico_id: number | null;
+  technician: TechnicianBasicInfo | null;
+  workshop: WorkshopBasicInfo | null;
+  suggested_technician?: SuggestedTechnicianInfo | null;  // Opcional
+  // Campos calculados localmente
+  _isTimedOut?: boolean;
 }
 
 interface IncidentDetail extends Incident {
@@ -69,7 +103,7 @@ interface ApiDetailResponse {
   templateUrl: './incidents-list.html',
   styleUrl: './incidents-list.css'
 })
-export class IncidentsListComponent implements OnInit {
+export class IncidentsListComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly incidentsService = inject(IncidentsService);
   private readonly router = inject(Router);
@@ -85,9 +119,16 @@ export class IncidentsListComponent implements OnInit {
   loadingDetail = signal(false);
   viewMode = signal<'list' | 'map'>('list');
   showRejectModal = signal(false);
+  showAcceptModal = signal(false);
+  showAssignTechnicianModal = signal(false);
+  acceptWithSuggestedTechnician = signal(false);
   rejectReason = signal('');
+  availableTechnicians = signal<any[]>([]);
+  selectedTechnicianId = signal<number | null>(null);
+  loadingTechnicians = signal(false);
   isProcessing = signal(false);
   selectedImage = signal<string | null>(null);
+  showLegend = signal(false);
   latestAiAnalysis = signal<IncidentAiAnalysis | null>(null);
   aiLoading = signal(false);
   
@@ -103,9 +144,26 @@ export class IncidentsListComponent implements OnInit {
   private map: any = null;
   private markers: any[] = [];
   private L: any = null;
+  private timeoutCheckInterval: any = null;
 
   readonly filteredIncidents = computed(() => {
-    return this.incidents();
+    const filter = this.selectedFilter();
+    const allIncidents = this.incidents();
+    
+    if (filter === 'todos') {
+      return allIncidents;
+    }
+    
+    if (filter === 'pendiente') {
+      // Los incidentes pendientes pueden venir del endpoint /pendientes/asignacion
+      // que incluye incidentes con estado 'pendiente' o que están esperando asignación
+      return allIncidents.filter(incident => 
+        incident.estado_actual === 'pendiente' || 
+        (incident.estado_actual === 'pendiente' && !incident.taller_id)
+      );
+    }
+    
+    return allIncidents.filter(incident => incident.estado_actual === filter);
   });
 
   readonly incidentsByStatus = computed(() => {
@@ -129,25 +187,60 @@ export class IncidentsListComponent implements OnInit {
         // Cerrar el detalle cuando se cambia a vista de mapa
         this.selectedIncident.set(null);
         
-        // Limpiar el mapa anterior si existe
-        if (this.map) {
-          console.log('Removing old map instance');
-          this.map.remove();
-          this.map = null;
-          this.markers = [];
-        }
-        
-        // Cargar incidentes según el filtro seleccionado
-        this.loadIncidentsForMap();
-        
-        // Inicializar el mapa después de un pequeño delay
         setTimeout(() => {
+          // Siempre destruir y recrear el mapa para evitar problemas de DOM
+          if (this.map) {
+            this.destroyMap();
+          }
+          
+          // Cargar incidentes según el filtro seleccionado
+          this.loadIncidentsForMap();
+          
+          // Inicializar el mapa
           this.initMap();
-        }, 100);
-      } else if (mode === 'list') {
+        }, 150);
+      } else if (mode === 'list' && this.map) {
+        // Destruir el mapa cuando se cambia a vista de lista
+        this.destroyMap();
         // Cuando vuelve a lista, recargar los incidentes del filtro seleccionado
         this.loadIncidents();
       }
+    });
+
+    // ✅ Suscribirse al servicio reactivo de incidentes
+    this.incidentsService.incidents$.subscribe(incidents => {
+      // Convertir los incidentes del servicio al formato local
+      const localIncidents: Incident[] = incidents.map(inc => ({
+        id: inc.id,
+        descripcion: inc.descripcion,
+        estado_actual: inc.estado_actual,
+        prioridad_ia: inc.prioridad_ia,
+        categoria_ia: inc.categoria_ia,
+        created_at: inc.created_at,
+        direccion_referencia: inc.direccion_referencia,
+        latitude: inc.latitud,
+        longitude: inc.longitud,
+        client_id: inc.cliente_id,
+        vehiculo_id: inc.vehiculo_id,
+        taller_id: inc.taller_id,
+        tecnico_id: inc.tecnico_id,
+        technician: null,
+        workshop: null,
+        suggested_technician: null,
+        suggested_technicians: [],
+        ai_analysis: null
+      }));
+      this.incidents.set(localIncidents);
+      console.log('✅ Incidents updated from service:', incidents.length);
+    });
+
+    this.incidentsService.loading$.subscribe(loading => {
+      this.loading.set(loading);
+    });
+
+    // ✅ Recargar contadores cuando llega un nuevo incidente asignado
+    this.incidentsService.incidentAssigned$.subscribe(() => {
+      this.loadStatusCounts();
     });
   }
 
@@ -155,6 +248,8 @@ export class IncidentsListComponent implements OnInit {
     this.loadStatusCounts();
     this.loadIncidents();
     this.loadLeaflet();
+    this.connectWebSocket(); // ✅ Conectar WebSocket
+    this.startTimeoutChecker(); // ✅ Iniciar verificador de timeouts
     
     // Detectar si hay un incidentId en los query params
     this.route.queryParams.subscribe(params => {
@@ -169,6 +264,46 @@ export class IncidentsListComponent implements OnInit {
         }, 500);
       }
     });
+  }
+
+  ngOnDestroy(): void {
+    this.destroyMap();
+    this.stopTimeoutChecker(); // ✅ Detener verificador de timeouts
+    // this.wsService.disconnect(); // ✅ Desconectar WebSocket
+  }
+
+  /**
+   * ✅ Conectar WebSocket para recibir actualizaciones en tiempo real
+   */
+  connectWebSocket(): void {
+    // if (!this.wsService.isConnected()) {
+    //   this.wsService.connect();
+    // }
+    console.log('✅ WebSocket connected for incidents list');
+  }
+
+  destroyMap(): void {
+    if (this.map) {
+      // Limpiar todos los marcadores
+      this.markers.forEach(marker => {
+        if (this.map && this.map.hasLayer(marker)) {
+          this.map.removeLayer(marker);
+        }
+      });
+      this.markers = [];
+      
+      // Remover el mapa completamente
+      this.map.remove();
+      this.map = null;
+      
+      // Limpiar el contenedor del DOM
+      const mapContainer = document.getElementById('map');
+      if (mapContainer) {
+        mapContainer.innerHTML = '';
+        // Remover clases de Leaflet que puedan quedar
+        mapContainer.className = 'map';
+      }
+    }
   }
 
   loadStatusCounts() {
@@ -222,58 +357,38 @@ export class IncidentsListComponent implements OnInit {
   }
 
   loadIncidents() {
+    // ✅ Cargar todos los incidentes para filtrado local
     this.loading.set(true);
     this.error.set(null);
-
-    const filter = this.selectedFilter();
     
-    if (filter === 'todos') {
-      // Cargar todos los incidentes
-      const pendientesRequest = this.http.get<ApiResponse>(`${this.apiUrl}/pendientes/asignacion`);
-      const asignadosRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=asignado`);
-      const enProcesoRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=en_proceso`);
-      const resueltosRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=resuelto`);
+    // Cargar todos los estados en paralelo
+    const pendientesRequest = this.http.get<ApiResponse>(`${this.apiUrl}/pendientes/asignacion`);
+    const asignadosRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=asignado`);
+    const enProcesoRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=en_proceso`);
+    const resueltosRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=resuelto`);
+    
+    Promise.all([
+      pendientesRequest.toPromise(),
+      asignadosRequest.toPromise(),
+      enProcesoRequest.toPromise(),
+      resueltosRequest.toPromise()
+    ]).then(responses => {
+      // Combinar todos los incidentes
+      const allIncidents = [
+        ...(responses[0]?.data || []),
+        ...(responses[1]?.data || []),
+        ...(responses[2]?.data || []),
+        ...(responses[3]?.data || [])
+      ];
       
-      Promise.all([
-        pendientesRequest.toPromise(),
-        asignadosRequest.toPromise(),
-        enProcesoRequest.toPromise(),
-        resueltosRequest.toPromise()
-      ]).then(responses => {
-        const allIncidents = [
-          ...(responses[0]?.data || []),
-          ...(responses[1]?.data || []),
-          ...(responses[2]?.data || []),
-          ...(responses[3]?.data || [])
-        ];
-        this.incidents.set(allIncidents);
-        this.loading.set(false);
-      }).catch(err => {
-        console.error('Error loading all incidents:', err);
-        this.error.set('Error al cargar las solicitudes');
-        this.loading.set(false);
-      });
-    } else {
-      // Cargar solo el filtro seleccionado
-      let url: string;
-      if (filter === 'pendiente') {
-        url = `${this.apiUrl}/pendientes/asignacion`;
-      } else {
-        url = `${this.apiUrl}?estado=${filter}`;
-      }
-
-      this.http.get<ApiResponse>(url).subscribe({
-        next: (response) => {
-          this.incidents.set(response.data);
-          this.loading.set(false);
-        },
-        error: (err) => {
-          console.error('Error loading incidents:', err);
-          this.error.set(err.error?.message || 'Error al cargar las solicitudes');
-          this.loading.set(false);
-        }
-      });
-    }
+      console.log('✅ All incidents loaded for filtering:', allIncidents.length);
+      this.incidents.set(allIncidents);
+      this.loading.set(false);
+    }).catch(err => {
+      console.error('Error loading incidents:', err);
+      this.error.set('Error al cargar los incidentes');
+      this.loading.set(false);
+    });
   }
 
   loadAllIncidentsForMap() {
@@ -325,9 +440,8 @@ export class IncidentsListComponent implements OnInit {
     // Si estamos en vista de mapa, actualizar el mapa con el filtro
     if (this.viewMode() === 'map') {
       this.loadIncidentsForMap();
-    } else {
-      this.loadIncidents();
     }
+    // En vista de lista, el filtrado se hace automáticamente con el computed filteredIncidents
   }
   
   loadIncidentsForMap() {
@@ -460,20 +574,80 @@ export class IncidentsListComponent implements OnInit {
 
   initMap() {
     const mapElement = document.getElementById('map');
-    if (!mapElement || !this.L) return;
+    if (!mapElement || !this.L) {
+      console.error('❌ Map element or Leaflet not available');
+      return;
+    }
 
-    // Inicializar el mapa sin centro específico
-    this.map = this.L.map('map');
+    // Asegurar que el contenedor esté limpio y tenga el tamaño correcto
+    mapElement.innerHTML = '';
+    mapElement.className = 'map';
+    mapElement.style.width = '100%';
+    mapElement.style.height = '100%';
+    mapElement.style.maxWidth = '100%';
+    mapElement.style.boxSizing = 'border-box';
 
-    this.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(this.map);
+    try {
+      // Crear el mapa con configuración profesional
+      this.map = this.L.map('map', {
+        zoomControl: false,
+        attributionControl: false,
+        preferCanvas: true // Mejor rendimiento
+      });
 
-    // Establecer una vista por defecto de Bolivia
-    this.map.setView([-16.5, -68.15], 6);
+      // Agregar controles personalizados
+      this.L.control.zoom({
+        position: 'topright'
+      }).addTo(this.map);
 
-    this.updateMapMarkers();
+      // Agregar múltiples capas de mapa
+      const osmLayer = this.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19,
+      });
+
+      const satelliteLayer = this.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '© Esri',
+        maxZoom: 19,
+      });
+
+      const terrainLayer = this.L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenTopoMap contributors',
+        maxZoom: 17,
+      });
+
+      // Agregar capa por defecto
+      osmLayer.addTo(this.map);
+
+      // Control de capas
+      const baseLayers = {
+        "Mapa": osmLayer,
+        "Satélite": satelliteLayer,
+        "Terreno": terrainLayer
+      };
+
+      this.L.control.layers(baseLayers, null, {
+        position: 'topright'
+      }).addTo(this.map);
+
+      // Centrar en Bolivia por defecto
+      this.map.setView([-16.5, -68.15], 6);
+
+      // Forzar que el mapa se ajuste al contenedor
+      setTimeout(() => {
+        if (this.map) {
+          this.map.invalidateSize();
+        }
+      }, 100);
+
+      // Actualizar marcadores
+      this.updateMapMarkers();
+
+      console.log('✅ Map initialized successfully');
+    } catch (error) {
+      console.error('❌ Error initializing map:', error);
+      this.map = null;
+    }
   }
 
   updateMapMarkers() {
@@ -503,34 +677,33 @@ export class IncidentsListComponent implements OnInit {
       const pinIcon = this.L.divIcon({
         className: 'custom-pin-marker',
         html: `
-          <div style="position: relative; width: 32px; height: 45px;">
-            <div style="
-              position: absolute;
-              width: 28px;
-              height: 28px;
-              background: ${markerColor};
-              border: 3px solid white;
-              border-radius: 50% 50% 50% 0;
-              transform: rotate(-45deg);
-              box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-              top: 0;
-              left: 2px;
-            "></div>
-            <div style="
-              position: absolute;
-              width: 8px;
-              height: 8px;
-              background: white;
-              border-radius: 50%;
-              top: 7px;
-              left: 12px;
-              z-index: 1;
-            "></div>
+          <div class="pin-wrapper">
+            <div class="pin-container" style="
+              position: relative;
+              width: 40px;
+              height: 50px;
+              filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+            ">
+              <svg width="40" height="50" viewBox="0 0 40 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- Pin principal -->
+                <path d="M20 0C11.163 0 4 7.163 4 16c0 12 16 34 16 34s16-22 16-34c0-8.837-7.163-16-16-16z" 
+                      fill="${markerColor}"/>
+                <!-- Borde blanco -->
+                <path d="M20 2C12.268 2 6 8.268 6 16c0 10.5 14 30.5 14 30.5S34 26.5 34 16c0-7.732-6.268-14-14-14z" 
+                      fill="white" opacity="0.3"/>
+                <!-- Círculo interior -->
+                <circle cx="20" cy="16" r="8" fill="white"/>
+                <!-- Número del incidente -->
+                <text x="20" y="20" text-anchor="middle" font-size="8" font-weight="bold" fill="${markerColor}">
+                  ${incident.id}
+                </text>
+              </svg>
+            </div>
           </div>
         `,
-        iconSize: [32, 45],
-        iconAnchor: [16, 40],
-        popupAnchor: [0, -40]
+        iconSize: [40, 50],
+        iconAnchor: [20, 50],
+        popupAnchor: [0, -50]
       });
       
       const marker = this.L.marker(position, { icon: pinIcon }).addTo(this.map);
@@ -632,6 +805,10 @@ export class IncidentsListComponent implements OnInit {
 
   closeImageModal() {
     this.selectedImage.set(null);
+  }
+
+  toggleLegend() {
+    this.showLegend.set(!this.showLegend());
   }
 
   centerMapOnIncident(incident: Incident) {
@@ -756,16 +933,43 @@ export class IncidentsListComponent implements OnInit {
     });
   }
 
-  acceptIncident(incident: Incident) {
-    if (this.isProcessing()) return;
+  openAcceptModal(incident: Incident) {
+    // Usar el incidente de la lista actual en lugar del parámetro
+    const currentIncident = this.incidents().find(i => i.id === incident.id);
+    if (currentIncident) {
+      this.selectedIncident.set(currentIncident);
+    } else {
+      this.selectedIncident.set(incident);
+    }
+    
+    this.showAcceptModal.set(true);
+    this.acceptWithSuggestedTechnician.set(false);
+  }
+
+  closeAcceptModal() {
+    this.showAcceptModal.set(false);
+    this.acceptWithSuggestedTechnician.set(false);
+  }
+
+  acceptIncident() {
+    const incident = this.selectedIncident();
+    if (!incident || this.isProcessing()) return;
 
     this.isProcessing.set(true);
     this.error.set(null);
     this.success.set(null);
 
-    this.http.post<ApiResponse>(`${this.apiUrl}/${incident.id}/aceptar`, {}).subscribe({
+    const acceptWithTechnician = this.acceptWithSuggestedTechnician();
+
+    this.http.post<ApiResponse>(`${this.apiUrl}/${incident.id}/aceptar`, {
+      accept_suggested_technician: acceptWithTechnician
+    }).subscribe({
       next: (response) => {
-        this.success.set('Solicitud aceptada exitosamente');
+        const message = acceptWithTechnician 
+          ? 'Solicitud aceptada con técnico asignado. El incidente está en proceso.'
+          : 'Solicitud aceptada. Ahora puedes asignar un técnico manualmente.';
+        this.success.set(message);
+        this.closeAcceptModal();
         this.selectedIncident.set(null);
         this.loadStatusCounts(); // Actualizar contadores
         this.loadIncidents();
@@ -826,4 +1030,152 @@ export class IncidentsListComponent implements OnInit {
       }
     });
   }
+
+  openAssignTechnicianModal(incident: IncidentDetail) {
+    this.selectedIncident.set(incident);
+    this.showAssignTechnicianModal.set(true);
+    this.selectedTechnicianId.set(null);
+    this.loadAvailableTechnicians(incident.taller_id!);
+  }
+
+  closeAssignTechnicianModal() {
+    this.showAssignTechnicianModal.set(false);
+    this.selectedTechnicianId.set(null);
+    this.availableTechnicians.set([]);
+  }
+
+  loadAvailableTechnicians(workshopId: number) {
+    this.loadingTechnicians.set(true);
+    
+    this.http.get<any>(`${environment.apiUrl}/technicians/workshops/${workshopId}/available`).subscribe({
+      next: (response) => {
+        this.availableTechnicians.set(response.data.technicians || []);
+        this.loadingTechnicians.set(false);
+      },
+      error: (err) => {
+        console.error('Error loading technicians:', err);
+        this.error.set('Error al cargar los técnicos disponibles');
+        this.loadingTechnicians.set(false);
+      }
+    });
+  }
+
+  assignTechnician() {
+    const incident = this.selectedIncident();
+    const technicianId = this.selectedTechnicianId();
+    
+    if (!incident || !technicianId || this.isProcessing()) return;
+
+    this.isProcessing.set(true);
+    this.error.set(null);
+    this.success.set(null);
+
+    this.http.post<any>(`${environment.apiUrl}/real-time/incidents/${incident.id}/assign`, {
+      technician_id: technicianId
+    }).subscribe({
+      next: (response) => {
+        this.success.set('Técnico asignado exitosamente. El incidente está en proceso.');
+        this.closeAssignTechnicianModal();
+        this.selectedIncident.set(null);
+        this.loadStatusCounts();
+        this.loadIncidents();
+        this.isProcessing.set(false);
+        
+        setTimeout(() => this.success.set(null), 5000);
+      },
+      error: (err) => {
+        console.error('Error assigning technician:', err);
+        this.error.set(err.error?.detail || err.error?.message || 'Error al asignar el técnico');
+        this.isProcessing.set(false);
+      }
+    });
+  }
+
+  openTrackingView(incident: IncidentDetail) {
+    // Navegar a la vista de seguimiento con mapa completo y chat
+    this.router.navigate(['/tracking/incident', incident.id]);
+  }
+
+  /**
+   * ✅ Iniciar verificador de timeouts
+   * Verifica cada segundo si algún incidente pendiente ha excedido el tiempo de respuesta
+   */
+  startTimeoutChecker() {
+    // Verificar inmediatamente
+    this.checkTimeouts();
+    
+    // Luego verificar cada segundo
+    this.timeoutCheckInterval = setInterval(() => {
+      this.checkTimeouts();
+    }, 1000);
+  }
+
+  /**
+   * ✅ Detener verificador de timeouts
+   */
+  stopTimeoutChecker() {
+    if (this.timeoutCheckInterval) {
+      clearInterval(this.timeoutCheckInterval);
+      this.timeoutCheckInterval = null;
+    }
+  }
+
+  /**
+   * ✅ Verificar timeouts de incidentes pendientes
+   * Verifica si los incidentes han excedido el tiempo de respuesta
+   */
+  checkTimeouts() {
+    const currentIncidents = this.incidents();
+    let hasChanges = false;
+
+    const updatedIncidents = currentIncidents.map(incident => {
+      // Solo verificar incidentes pendientes con técnico sugerido que tenga timeout_at
+      if (incident.estado_actual === 'pendiente' && 
+          incident.suggested_technician && 
+          incident.suggested_technician.timeout_at) {
+        
+        const timeoutAt = new Date(incident.suggested_technician.timeout_at);
+        const now = new Date();
+        
+        // Marcar como timeout si el tiempo se acabó
+        const wasTimedOut = incident._isTimedOut || false;
+        const isTimedOut = now.getTime() >= timeoutAt.getTime();
+
+        // Log para debugging
+        if (incident.id === 47 || incident.id === 31) {
+          console.log(`🔍 Incident #${incident.id}:`, {
+            timeout_at: incident.suggested_technician.timeout_at,
+            isTimedOut,
+            wasTimedOut
+          });
+        }
+
+        if (isTimedOut !== wasTimedOut) {
+          hasChanges = true;
+          console.log(`⚠️ Incident #${incident.id} timeout status changed: ${wasTimedOut} → ${isTimedOut}`);
+        }
+
+        return {
+          ...incident,
+          _isTimedOut: isTimedOut
+        };
+      }
+
+      return incident;
+    });
+
+    // Solo actualizar si hay cambios en el estado de timeout
+    if (hasChanges) {
+      this.incidents.set(updatedIncidents);
+    }
+  }
+
+  /**
+   * ✅ Verificar si un incidente está en timeout
+   */
+  isIncidentTimedOut(incident: Incident): boolean {
+    return incident._isTimedOut === true;
+  }
+
 }
+

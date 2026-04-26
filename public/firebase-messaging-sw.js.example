@@ -1,0 +1,74 @@
+// Firebase Cloud Messaging Service Worker
+// Este archivo maneja las notificaciones push cuando la app está en segundo plano
+
+importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
+
+// Configuración de Firebase (debe coincidir con environment.ts)
+// IMPORTANTE: Reemplaza estos valores con tu configuración real de Firebase
+const firebaseConfig = {
+  apiKey: 'your_firebase_api_key_here',
+  authDomain: 'your-project.firebaseapp.com',
+  projectId: 'your-project-id',
+  storageBucket: 'your-project.firebasestorage.app',
+  messagingSenderId: 'your_sender_id',
+  appId: 'your_app_id',
+  measurementId: 'your_measurement_id'
+};
+
+// Inicializar Firebase
+firebase.initializeApp(firebaseConfig);
+
+// Obtener instancia de messaging
+const messaging = firebase.messaging();
+
+// Manejar mensajes en segundo plano
+messaging.onBackgroundMessage((payload) => {
+  console.log('[firebase-messaging-sw.js] Mensaje recibido en segundo plano:', payload);
+
+  const notificationTitle = payload.notification?.title || 'Nueva notificación';
+  const notificationOptions = {
+    body: payload.notification?.body || '',
+    icon: payload.notification?.image || '/assets/icons/icon-192x192.png',
+    badge: '/assets/icons/icon-72x72.png',
+    tag: 'mecanicoya-notification',
+    requireInteraction: true,
+    data: payload.data || {}
+  };
+
+  return self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+// Manejar clic en la notificación
+self.addEventListener('notificationclick', (event) => {
+  console.log('[firebase-messaging-sw.js] Notificación clickeada:', event);
+  
+  event.notification.close();
+
+  // Determinar la URL de destino
+  const data = event.notification.data || {};
+  const actionUrl = data.click_action || data.action_url || data.clickAction || '/';
+
+  // Abrir o enfocar la ventana de la aplicación
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Si hay una ventana abierta con la app, enfocarla y navegar
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.focus();
+          // Enviar mensaje al cliente para que navegue
+          client.postMessage({
+            type: 'NOTIFICATION_CLICK',
+            clickAction: actionUrl
+          });
+          return;
+        }
+      }
+      
+      // Si no hay ventana abierta, abrir una nueva
+      if (clients.openWindow) {
+        return clients.openWindow(self.location.origin + actionUrl);
+      }
+    })
+  );
+});
