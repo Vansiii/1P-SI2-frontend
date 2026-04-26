@@ -23,7 +23,7 @@ const TWO_FACTOR_CHALLENGE_KEY = 'two_factor_challenge_state';
   styleUrls: ['./verify-two-factor.css'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class VerifyTwoFactor {
+export class VerifyTwoFactor implements OnInit, OnDestroy {
   private readonly formBuilder = inject(FormBuilder);
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);

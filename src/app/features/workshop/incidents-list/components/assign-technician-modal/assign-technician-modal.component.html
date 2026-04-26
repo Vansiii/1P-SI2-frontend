@@ -1,0 +1,110 @@
+<!-- Modal Overlay -->
+<div class="modal-overlay" (click)="onCancel()">
+  <!-- Modal Panel -->
+  <div class="modal-panel" (click)="$event.stopPropagation()">
+    <!-- Header -->
+    <div class="modal-header">
+      <h2 id="assign-technician-modal-title" class="modal-title">Asignar Técnico</h2>
+      <button 
+        class="close-button" 
+        (click)="onCancel()"
+        aria-label="Cerrar modal">
+        ✕
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="modal-content">
+      <!-- Incident Info -->
+      <div class="incident-info">
+        <p class="incident-label">Solicitud #{{ incident().id }}</p>
+        <p class="incident-description">{{ incident().descripcion }}</p>
+      </div>
+
+      <!-- Loading State -->
+      @if (loading()) {
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Cargando técnicos disponibles...</p>
+        </div>
+      }
+
+      <!-- Error State -->
+      @if (error()) {
+        <div class="error-state">
+          <p class="error-icon">⚠️</p>
+          <p class="error-message">{{ error() }}</p>
+          <button class="retry-button" (click)="loadTechnicians()">
+            Reintentar
+          </button>
+        </div>
+      }
+
+      <!-- Technicians List -->
+      @if (!loading() && !error()) {
+        @if (technicians().length === 0) {
+          <div class="empty-state">
+            <p class="empty-icon">👤</p>
+            <p class="empty-message">No hay técnicos disponibles en este momento</p>
+          </div>
+        } @else {
+          <div class="technicians-list">
+            @for (technician of technicians(); track technician.id) {
+              <div 
+                class="technician-card"
+                [class.selected]="isSelected(technician.id)"
+                (click)="selectTechnician(technician.id)"
+                role="button"
+                tabindex="0"
+                [attr.aria-selected]="isSelected(technician.id)">
+                
+                <!-- Selection Indicator -->
+                <div class="selection-indicator">
+                  @if (isSelected(technician.id)) {
+                    <span class="check-icon">✓</span>
+                  }
+                </div>
+
+                <!-- Technician Info -->
+                <div class="technician-info">
+                  <p class="technician-name">{{ getTechnicianName(technician) }}</p>
+                  <p class="technician-specialties">{{ getSpecialtiesText(technician) }}</p>
+                  
+                  <!-- Status Badges -->
+                  <div class="status-badges">
+                    @if (technician.is_available) {
+                      <span class="badge badge-available">Disponible</span>
+                    }
+                    @if (technician.is_on_duty) {
+                      <span class="badge badge-on-duty">En turno</span>
+                    }
+                    @if (technician.is_online) {
+                      <span class="badge badge-online">En línea</span>
+                    }
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      }
+    </div>
+
+    <!-- Footer -->
+    <div class="modal-footer">
+      <button 
+        class="button button-secondary" 
+        (click)="onCancel()"
+        type="button">
+        Cancelar
+      </button>
+      <button 
+        class="button button-primary" 
+        (click)="confirmAssign()"
+        [disabled]="isConfirmDisabled()"
+        type="button">
+        Asignar Técnico
+      </button>
+    </div>
+  </div>
+</div>

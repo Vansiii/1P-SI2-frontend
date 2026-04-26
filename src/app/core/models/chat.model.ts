@@ -1,3 +1,5 @@
+export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+
 export interface Message {
   id: number;
   incident_id: number;
@@ -10,6 +12,11 @@ export interface Message {
   read_at?: string;
   created_at: string;
   updated_at?: string;
+  // Campos para envío optimista
+  localId?: string;
+  status?: MessageStatus;
+  isTemporary?: boolean;
+  errorMessage?: string;
 }
 
 export interface Conversation {

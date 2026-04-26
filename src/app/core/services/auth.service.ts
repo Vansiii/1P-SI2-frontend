@@ -57,17 +57,71 @@ export class AuthService {
    */
   currentUser = computed(() => this.userSignal());
 
+  /**
+   * Verifica si un JWT está expirado
+   */
+  private isTokenExpired(token: string): boolean {
+    try {
+      // Verificar que el token tenga el formato correcto (3 partes separadas por puntos)
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        console.warn('⚠️ Invalid token format');
+        return true;
+      }
+
+      const payload = JSON.parse(atob(parts[1]));
+      
+      if (!payload.exp) {
+        console.warn('⚠️ Token does not have expiration');
+        return true;
+      }
+
+      const exp = payload.exp * 1000; // Convertir a milisegundos
+      const now = Date.now();
+      const isExpired = now >= exp;
+      
+      if (isExpired) {
+        const expiredAgo = Math.floor((now - exp) / 1000);
+        console.log(`⏰ Token expired ${expiredAgo} seconds ago`);
+      }
+      
+      return isExpired;
+    } catch (error) {
+      console.error('❌ Error parsing token:', error);
+      return true; // Si no se puede parsear, considerar expirado
+    }
+  }
+
   restoreSession(): void {
+    console.log('🔄 Attempting to restore session...');
+    
     // Cargar tokens desde localStorage
     const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
     const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
     
+    console.log('🔍 Tokens in localStorage:', {
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
+      accessTokenLength: accessToken?.length,
+      refreshTokenLength: refreshToken?.length
+    });
+    
     // Si no hay tokens, limpiar todo
     if (!accessToken || !refreshToken) {
+      console.log('❌ No tokens found in localStorage');
       this.clearSession();
       return;
     }
 
+    // Verificar si el access token está expirado
+    if (this.isTokenExpired(accessToken)) {
+      console.log('⏰ Access token expired on restore, clearing session');
+      this.clearSession();
+      return;
+    }
+
+    console.log('✅ Tokens found and valid, restoring session...');
+    
     // Establecer los tokens en los signals
     this.accessTokenSignal.set(accessToken);
     this.refreshTokenSignal.set(refreshToken);
@@ -76,17 +130,28 @@ export class AuthService {
     this.isRestoringSession.set(true);
 
     // Intentar obtener el usuario actual
-    this.fetchCurrentUser().subscribe({
-      next: () => {
+    console.log('📡 Fetching current user from backend...');
+    console.log('📡 About to subscribe to fetchCurrentUser()...');
+    
+    const subscription = this.fetchCurrentUser().subscribe({
+      next: (user) => {
         // Sesión restaurada exitosamente
         this.isRestoringSession.set(false);
+        console.log('✅ Session restored successfully for user:', user.email);
       },
-      error: () => {
+      error: (err) => {
         // Si falla, limpiar la sesión inválida
         this.isRestoringSession.set(false);
-        this.clearSession();
+        console.error('❌ Failed to restore session:', err);
+        console.log('🔴 Clearing invalid session and redirecting to login');
+        this.clearSessionAndRedirect();
       },
+      complete: () => {
+        console.log('✅ fetchCurrentUser() observable completed');
+      }
     });
+    
+    console.log('📡 Subscription created:', subscription);
   }
 
   registerWorkshop(registrationRequest: RegisterWorkshopRequest): Observable<AuthTokenResponse> {
@@ -159,11 +224,34 @@ export class AuthService {
   }
 
   fetchCurrentUser(): Observable<AppUserProfile> {
+    console.log('📡 Making HTTP GET request to /auth/me...');
+    console.log('📡 API Base URL:', this.apiBaseUrl);
+    console.log('📡 Full URL:', `${this.apiBaseUrl}/auth/me`);
+    
     return this.httpClient
       .get<ApiResponse<AppUserProfile>>(`${this.apiBaseUrl}/auth/me`)
       .pipe(
-        map(response => response.data),
-        tap((userProfile) => this.userSignal.set(userProfile))
+        tap(() => console.log('📡 HTTP request sent successfully')),
+        map(response => {
+          console.log('✅ Received user profile from backend:', response.data);
+          return response.data;
+        }),
+        tap((userProfile) => {
+          console.log('✅ Setting user profile in signal');
+          this.userSignal.set(userProfile);
+        }),
+        catchError((error) => {
+          console.error('❌ ERROR in fetchCurrentUser:');
+          console.error('❌ Error object:', error);
+          console.error('❌ Error status:', error.status);
+          console.error('❌ Error statusText:', error.statusText);
+          console.error('❌ Error message:', error.message);
+          console.error('❌ Error error:', error.error);
+          console.error('❌ Error url:', error.url);
+          
+          // Re-throw the error so it propagates to the subscriber
+          throw error;
+        })
       );
   }
 
@@ -319,6 +407,28 @@ export class AuthService {
 
   getRefreshToken(): string | null {
     return this.refreshTokenSignal();
+  }
+
+  /**
+   * Update tokens (used by interceptor when refreshing)
+   */
+  updateTokens(accessToken: string, refreshToken: string): void {
+    this.accessTokenSignal.set(accessToken);
+    this.refreshTokenSignal.set(refreshToken);
+    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  }
+
+  /**
+   * Clear session and redirect to login (used by interceptor)
+   */
+  clearSessionAndRedirect(): void {
+    console.log('🔴 Clearing session and redirecting to /auth');
+    this.clearSession();
+    // Usar setTimeout para evitar problemas de navegación durante el ciclo de detección de cambios
+    setTimeout(() => {
+      this.router.navigate(['/auth']);
+    }, 0);
   }
 
   private persistSession(authResponse: AuthTokenResponse): void {

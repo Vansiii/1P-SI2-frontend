@@ -1,7 +1,8 @@
-import { Component, Input, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, DestroyRef, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subscription } from 'rxjs';
+import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ChatService } from '../../core/services/chat.service';
 import { WebSocketService } from '../../core/services/websocket.service';
 import { Message } from '../../core/models/chat.model';
@@ -9,7 +10,7 @@ import { Message } from '../../core/models/chat.model';
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ScrollingModule],
   template: `
     <div class="chat-container">
       <!-- Chat Header -->
@@ -27,8 +28,8 @@ import { Message } from '../../core/models/chat.model';
         </div>
       </div>
 
-      <!-- Messages Area -->
-      <div class="messages-container" #messagesContainer>
+      <!-- Messages Area with Virtual Scroll -->
+      <div class="messages-container">
         <div *ngIf="isLoading" class="loading">
           <div class="spinner"></div>
           <p>Cargando mensajes...</p>
@@ -40,8 +41,14 @@ import { Message } from '../../core/models/chat.model';
           <p>Envía un mensaje para iniciar la conversación</p>
         </div>
 
-        <div *ngIf="!isLoading && messages.length > 0" class="messages-list">
-          <div *ngFor="let message of messages" 
+        <!-- Virtual Scroll Viewport for Messages -->
+        <cdk-virtual-scroll-viewport 
+          *ngIf="!isLoading && messages.length > 0"
+          [itemSize]="messageItemSize()"
+          class="messages-viewport"
+          #viewport>
+          
+          <div *cdkVirtualFor="let message of messages; trackBy: trackByMessageId" 
                class="message-wrapper"
                [class.message-me]="message.sender_id === currentUserId"
                [class.message-other]="message.sender_id !== currentUserId">
@@ -59,13 +66,14 @@ import { Message } from '../../core/models/chat.model';
               </div>
             </div>
           </div>
-        </div>
 
-        <div *ngIf="isTyping" class="typing-indicator">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
+          <!-- Typing Indicator (outside virtual scroll) -->
+          <div *ngIf="isTyping" class="typing-indicator">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </cdk-virtual-scroll-viewport>
       </div>
 
       <!-- Input Area -->
@@ -144,9 +152,22 @@ import { Message } from '../../core/models/chat.model';
 
     .messages-container {
       flex: 1;
-      overflow-y: auto;
-      padding: 16px;
+      overflow: hidden;
       background: #f5f5f5;
+      position: relative;
+    }
+
+    /* Virtual Scroll Viewport Styles */
+    .messages-viewport {
+      height: 100%;
+      width: 100%;
+    }
+
+    .messages-viewport .cdk-virtual-scroll-content-wrapper {
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      gap: 8px;
     }
 
     .loading, .empty-state {
@@ -156,6 +177,7 @@ import { Message } from '../../core/models/chat.model';
       justify-content: center;
       height: 100%;
       color: #666;
+      padding: 16px;
     }
 
     .spinner {
@@ -172,15 +194,10 @@ import { Message } from '../../core/models/chat.model';
       100% { transform: rotate(360deg); }
     }
 
-    .messages-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
     .message-wrapper {
       display: flex;
       margin-bottom: 8px;
+      min-height: 60px; /* Minimum height for virtual scroll item size calculation */
     }
 
     .message-wrapper.message-me {
@@ -239,6 +256,7 @@ import { Message } from '../../core/models/chat.model';
       background: white;
       border-radius: 16px;
       width: fit-content;
+      margin: 8px 16px;
     }
 
     .typing-indicator span {
@@ -316,31 +334,51 @@ import { Message } from '../../core/models/chat.model';
       background: #ccc;
       cursor: not-allowed;
     }
+
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+      .message-wrapper {
+        min-height: 50px;
+      }
+
+      .message-bubble {
+        max-width: 85%;
+        padding: 10px 14px;
+      }
+
+      .message-text {
+        font-size: 14px;
+      }
+    }
   `]
 })
 export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly chatService = inject(ChatService);
+  private readonly wsService = inject(WebSocketService);
+
   @Input() incidentId!: number;
   @Input() currentUserId!: number;
-  @Input() otherPartyName: string = 'Usuario';
+  @Input() otherPartyName = 'Usuario';
   
-  @ViewChild('messagesContainer') messagesContainer!: ElementRef;
+  @ViewChild('viewport') viewport!: CdkVirtualScrollViewport;
 
   messages: Message[] = [];
-  messageText: string = '';
-  isLoading: boolean = true;
-  isSending: boolean = false;
-  isTyping: boolean = false;
-  isOnline: boolean = false;
+  messageText = '';
+  isLoading = true;
+  isSending = false;
+  isTyping = false;
+  isOnline = false;
   
-  private subscriptions: Subscription[] = [];
-  private shouldScrollToBottom: boolean = false;
+  private shouldScrollToBottom = false;
   private typingTimeout: ReturnType<typeof setTimeout> | null = null;
-  private isCurrentlyTyping: boolean = false;
+  private isCurrentlyTyping = false;
 
-  constructor(
-    private chatService: ChatService,
-    private wsService: WebSocketService
-  ) {}
+  // Computed signal for responsive message item size
+  readonly messageItemSize = computed(() => {
+    // Base size for messages, adjust based on screen size
+    return window.innerWidth <= 768 ? 50 : 60;
+  });
 
   ngOnInit(): void {
     this.loadMessages();
@@ -357,7 +395,6 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   ngOnDestroy(): void {
-    this.subscriptions.forEach(sub => sub.unsubscribe());
     this.wsService.leaveIncidentRoom(this.incidentId);
     // Ensure typing stop is sent when component is destroyed
     if (this.isCurrentlyTyping) {
@@ -369,19 +406,16 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   loadMessages(): void {
+    // El observable del cache se encarga de cargar los mensajes automáticamente
+    // Solo necesitamos indicar que estamos cargando inicialmente
     this.isLoading = true;
-    this.chatService.getMessages(this.incidentId).subscribe({
-      next: (messages: Message[]) => {
-        this.messages = messages;
-        this.isLoading = false;
-        this.shouldScrollToBottom = true;
-        this.markAsRead();
-      },
-      error: (error: any) => {
-        console.error('Error loading messages:', error);
-        this.isLoading = false;
-      }
-    });
+    
+    // Esperar un momento para que el cache cargue los mensajes
+    setTimeout(() => {
+      this.isLoading = false;
+      this.shouldScrollToBottom = true;
+      this.markAsRead();
+    }, 500);
   }
 
   refreshMessages(): void {
@@ -399,33 +433,38 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   subscribeToMessages(): void {
-    // Suscribirse a mensajes nuevos del servicio de chat
-    const sub = this.chatService.newMessage$.subscribe((message: Message) => {
-      if (message.incident_id === this.incidentId) {
-        // Evitar duplicados
-        if (!this.messages.find(m => m.id === message.id)) {
-          this.messages.push(message);
+    // Suscribirse al observable de mensajes del cache (se actualiza automáticamente)
+    this.chatService.getMessagesObservable(this.incidentId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((messages: Message[]) => {
+        console.log(`📬 Chat component received ${messages.length} messages from cache for incident ${this.incidentId}`);
+        const previousLength = this.messages.length;
+        this.messages = messages;
+        
+        // Si hay nuevos mensajes, hacer scroll y marcar como leído
+        if (messages.length > previousLength) {
+          console.log(`✨ New messages detected: ${previousLength} -> ${messages.length}`);
           this.shouldScrollToBottom = true;
           
-          // Marcar como leído si no es del usuario actual
-          if (message.sender_id !== this.currentUserId) {
+          // Marcar como leído si el último mensaje no es del usuario actual
+          const lastMessage = messages[messages.length - 1];
+          if (lastMessage && lastMessage.sender_id !== this.currentUserId) {
             this.markAsRead();
           }
         }
-      }
-    });
-    this.subscriptions.push(sub);
+      });
   }
 
   /**
    * Subscribe to typing users observable and update isTyping flag
    */
   subscribeToTypingUsers(): void {
-    const sub = this.chatService.typingUsers$.subscribe((typingMap: Map<number, string[]>) => {
-      const names = typingMap.get(this.incidentId) ?? [];
-      this.isTyping = names.length > 0;
-    });
-    this.subscriptions.push(sub);
+    this.chatService.typingUsers$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((typingMap: Map<number, string[]>) => {
+        const names = typingMap.get(this.incidentId) ?? [];
+        this.isTyping = names.length > 0;
+      });
   }
 
   /**
@@ -496,11 +535,23 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   scrollToBottom(): void {
     try {
-      const container = this.messagesContainer.nativeElement;
-      container.scrollTop = container.scrollHeight;
+      if (this.viewport) {
+        // Scroll to the end of the virtual scroll viewport
+        const scrollIndex = this.messages.length - 1;
+        if (scrollIndex >= 0) {
+          this.viewport.scrollToIndex(scrollIndex, 'smooth');
+        }
+      }
     } catch (err) {
       console.error('Error scrolling to bottom:', err);
     }
+  }
+
+  /**
+   * TrackBy function for virtual scrolling performance optimization
+   */
+  trackByMessageId(index: number, message: Message): number {
+    return message.id;
   }
 
   formatTime(dateString: string): string {

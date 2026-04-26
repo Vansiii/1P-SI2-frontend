@@ -149,7 +149,7 @@ export class VehiclesService {
 
   // ── HTTP methods ──────────────────────────────────────────────────────────
 
-  getVehicles(activeOnly: boolean = true): Observable<Vehicle[]> {
+  getVehicles(activeOnly = true): Observable<Vehicle[]> {
     return this.http
       .get<ApiResponse<Vehicle[]>>(this.apiUrl, {
         params: { active_only: activeOnly },

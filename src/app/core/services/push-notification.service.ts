@@ -1,166 +1,160 @@
-import { Injectable, inject } from '@angular/core';
-import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getMessaging, getToken, onMessage, Messaging, MessagePayload } from 'firebase/messaging';
-import { HttpClient } from '@angular/common/http';
+import { Injectable, signal } from '@angular/core';
+import { initializeApp } from 'firebase/app';
+import { getMessaging, getToken, onMessage, Messaging } from 'firebase/messaging';
 import { environment } from '../../../environments/environment';
-import { firstValueFrom, Subject, Observable } from 'rxjs';
 
 @Injectable({
   providedIn: 'root'
 })
 export class PushNotificationService {
-  private http = inject(HttpClient);
-  private firebaseApp: FirebaseApp | null = null;
   private messaging: Messaging | null = null;
   private currentToken: string | null = null;
   private ready = false;
   
-  // Observable para notificaciones recibidas
-  private notificationSubject = new Subject<MessagePayload>();
-  public notification$ = this.notificationSubject.asObservable();
-
-  constructor() {
-    // No inicializar automáticamente, esperar a que se llame initialize()
-  }
+  // Signals for reactive state
+  readonly latestNotification = signal<any | null>(null);
+  readonly notificationCount = signal<number>(0);
+  readonly isReady = signal<boolean>(false);
+  readonly permissionStatus = signal<NotificationPermission>('default');
 
   /**
-   * Inicializar Firebase y solicitar permisos
+   * Register Service Worker for background notifications
    */
-  async initialize(): Promise<boolean> {
-    try {
-      // Verificar que la configuración de Firebase existe
-      if (!environment.firebase) {
-        console.warn('⚠️ Firebase no está configurado en environment');
-        return false;
-      }
-
-      // Registrar el service worker para mensajes en background
-      await this.registerServiceWorker();
-
-      // Inicializar Firebase
-      this.firebaseApp = initializeApp(environment.firebase);
-      
-      // Obtener instancia de messaging
-      this.messaging = getMessaging(this.firebaseApp);
-      
-      console.log('✅ Firebase inicializado correctamente');
-
-      // Solicitar permiso y obtener token
-      const success = await this.requestPermissionAndGetToken();
-      
-      if (success) {
-        this.ready = true;
-        this.setupForegroundMessageListener();
-      }
-      
-      return success;
-    } catch (error) {
-      console.error('❌ Error al inicializar Firebase:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Registrar el service worker de Firebase Messaging
-   */
-  private async registerServiceWorker(): Promise<void> {
+  private async registerServiceWorker(): Promise<boolean> {
     if (!('serviceWorker' in navigator)) {
-      console.warn('⚠️ Service Workers no soportados en este navegador');
-      return;
+      console.warn('⚠️ Service Workers not supported in this browser');
+      return false;
     }
 
     try {
       const registration = await navigator.serviceWorker.register(
         '/firebase-messaging-sw.js',
-        { scope: '/' }
+        { 
+          scope: '/',
+          updateViaCache: 'none'
+        }
       );
-      console.log('✅ Service Worker registrado:', registration.scope);
-    } catch (error) {
-      console.warn('⚠️ Error registrando Service Worker:', error);
-      // No lanzar error — las notificaciones en foreground seguirán funcionando
-    }
-  }
-
-  /**
-   * Verificar si el servicio está listo
-   */
-  isReady(): boolean {
-    return this.ready;
-  }
-
-  /**
-   * Obtener el token actual
-   */
-  getToken(): string | null {
-    return this.currentToken;
-  }
-
-  /**
-   * Solicitar permiso para notificaciones y obtener token
-   */
-  private async requestPermissionAndGetToken(): Promise<boolean> {
-    try {
-      if (!this.messaging) {
-        console.error('❌ Firebase Messaging no está inicializado');
-        return false;
-      }
-
-      // Verificar si el navegador soporta notificaciones
-      if (!('Notification' in window)) {
-        console.warn('⚠️ Este navegador no soporta notificaciones');
-        return false;
-      }
-
-      // Solicitar permiso
-      const permission = await Notification.requestPermission();
       
-      if (permission !== 'granted') {
-        console.warn('⚠️ Permiso de notificaciones denegado');
-        return false;
-      }
-
-      console.log('✅ Permiso de notificaciones concedido');
-
-      // Obtener token FCM
-      const token = await getToken(this.messaging, {
-        vapidKey: environment.firebaseVapidKey
-      });
-
-      if (token) {
-        console.log('✅ Token FCM obtenido:', token.substring(0, 20) + '...');
-        this.currentToken = token;
-        return true;
-      } else {
-        console.warn('⚠️ No se pudo obtener el token FCM');
-        return false;
-      }
-
+      console.log('✅ Service Worker registered:', registration.scope);
+      
+      // Wait for service worker to be ready
+      await navigator.serviceWorker.ready;
+      console.log('✅ Service Worker ready');
+      
+      return true;
     } catch (error) {
-      console.error('❌ Error al solicitar permiso de notificaciones:', error);
+      console.error('❌ Service Worker registration failed:', error);
       return false;
     }
   }
 
   /**
-   * Configurar listener para mensajes en primer plano
+   * Initialize Firebase Messaging
    */
-  private setupForegroundMessageListener(): void {
+  async initialize(): Promise<boolean> {
+    try {
+      // Check if notifications are supported
+      if (!this.isSupported()) {
+        console.warn('⚠️ Push notifications not supported in this browser');
+        return false;
+      }
+
+      // Register service worker FIRST (required for background notifications)
+      const swRegistered = await this.registerServiceWorker();
+      if (!swRegistered) {
+        console.error('❌ Service Worker registration failed - cannot initialize Firebase');
+        return false;
+      }
+
+      // Check if Firebase config exists
+      if (!environment.firebase) {
+        console.warn('⚠️ Firebase configuration not found in environment');
+        return false;
+      }
+
+      // Initialize Firebase (TypeScript now knows firebase is defined)
+      const firebaseConfig = environment.firebase;
+      const app = initializeApp(firebaseConfig);
+      this.messaging = getMessaging(app);
+      console.log('✅ Firebase Messaging initialized');
+
+      // Request permission and get token
+      const token = await this.requestPermission();
+      
+      if (token) {
+        this.ready = true;
+        this.isReady.set(true);
+        this.setupForegroundListener();
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('❌ Error initializing Firebase:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Request notification permission and get FCM token
+   */
+  private async requestPermission(): Promise<string | null> {
+    if (!this.messaging) {
+      console.warn('Firebase Messaging not initialized');
+      return null;
+    }
+
+    try {
+      // Request notification permission
+      const permission = await Notification.requestPermission();
+      this.permissionStatus.set(permission);
+      
+      if (permission !== 'granted') {
+        console.warn('⚠️ Notification permission denied');
+        return null;
+      }
+
+      console.log('✅ Notification permission granted');
+
+      // Get FCM token
+      const token = await getToken(this.messaging, {
+        vapidKey: environment.firebaseVapidKey || ''
+      });
+
+      if (token) {
+        console.log('✅ FCM Token obtained:', token.substring(0, 20) + '...');
+        this.currentToken = token;
+        return token;
+      } else {
+        console.warn('⚠️ No FCM token available');
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error getting FCM token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Setup foreground message listener
+   */
+  private setupForegroundListener(): void {
     if (!this.messaging) {
       return;
     }
 
-    onMessage(this.messaging, (payload: MessagePayload) => {
-      console.log('📬 Mensaje recibido en primer plano:', payload);
-
-      // Emitir notificación a través del observable
-      this.notificationSubject.next(payload);
-
-      // Mostrar notificación del navegador
+    onMessage(this.messaging, (payload) => {
+      console.log('📬 Foreground message received:', payload);
+      
+      // Update signals with new notification
+      this.latestNotification.set(payload);
+      this.notificationCount.update(count => count + 1);
+      
+      // Show notification in foreground
       if (payload.notification) {
         this.showNotification(
-          payload.notification.title || 'Nueva notificación',
+          payload.notification.title || 'MecánicoYa',
           payload.notification.body || '',
-          payload.notification.image,
           payload.data
         );
       }
@@ -168,53 +162,62 @@ export class PushNotificationService {
   }
 
   /**
-   * Mostrar notificación del navegador
+   * Show browser notification
    */
-  private showNotification(
-    title: string,
-    body: string,
-    icon?: string,
-    data?: { [key: string]: string }
-  ): void {
+  private showNotification(title: string, body: string, data?: any): void {
     if ('Notification' in window && Notification.permission === 'granted') {
       const notification = new Notification(title, {
-        body: body,
-        icon: icon || '/assets/icons/icon-192x192.png',
-        badge: '/assets/icons/icon-72x72.png',
-        tag: 'mecanicoya-notification',
-        requireInteraction: true,
-        data: data
+        body,
+        icon: '/logo.png',
+        badge: '/logo.png',
+        data,
+        requireInteraction: true
       });
 
-      // Manejar clic en la notificación
-      notification.onclick = (event) => {
-        event.preventDefault();
+      notification.onclick = () => {
         window.focus();
-        
-        // Navegar a la URL si está en los datos
-        if (data && data['action_url']) {
-          window.location.href = data['action_url'];
-        }
-        
         notification.close();
+        
+        // Navigate to click_action if provided
+        if (data?.click_action) {
+          window.location.href = data.click_action;
+        }
       };
     }
   }
 
   /**
-   * Verificar si las notificaciones están habilitadas
+   * Check if notifications are supported
    */
-  isNotificationEnabled(): boolean {
-    return 'Notification' in window && Notification.permission === 'granted';
+  isSupported(): boolean {
+    return 'Notification' in window && 'serviceWorker' in navigator;
   }
 
   /**
-   * Obtener el estado del permiso de notificaciones
+   * Check if service is ready
    */
-  getNotificationPermission(): NotificationPermission {
-    if ('Notification' in window) {
-      return Notification.permission;
-    }
-    return 'denied';
+  isServiceReady(): boolean {
+    return this.ready;
+  }
+
+  /**
+   * Get current notification permission status
+   */
+  getPermissionStatus(): NotificationPermission {
+    return this.permissionStatus();
+  }
+
+  /**
+   * Clear notification count
+   */
+  clearNotificationCount(): void {
+    this.notificationCount.set(0);
+  }
+
+  /**
+   * Get current FCM token
+   */
+  getToken(): string | null {
+    return this.currentToken;
   }
 }

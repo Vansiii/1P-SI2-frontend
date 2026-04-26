@@ -1,0 +1,259 @@
+<!-- Overlay -->
+<div class="detail-overlay" (click)="closeDetail()">
+  <!-- Panel -->
+  <div class="detail-panel" (click)="$event.stopPropagation()">
+    <!-- Header -->
+    <div class="panel-header">
+      <h2 id="incident-detail-title" class="panel-title">Detalle de Solicitud #{{ incident().id }}</h2>
+      <button class="close-button" (click)="closeDetail()" aria-label="Cerrar panel de detalle">
+        ✕
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="panel-content">
+      <!-- Basic Info Section -->
+      <section class="info-section">
+        <h3 class="section-title">Información Básica</h3>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-label">Estado:</span>
+            <span class="info-value status-badge" [style.background-color]="'#3b82f6'">
+              {{ getStatusText() }}
+            </span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Prioridad:</span>
+            <span class="info-value priority-badge" [style.background-color]="'#f59e0b'">
+              {{ getPriorityText() }}
+            </span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Categoría:</span>
+            <span class="info-value">{{ incident().categoria?.nombre || 'N/A' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Fecha:</span>
+            <span class="info-value">{{ formatDate(incident().created_at) }}</span>
+          </div>
+        </div>
+        <div class="info-item full-width">
+          <span class="info-label">Descripción:</span>
+          <p class="info-value description">{{ incident().descripcion }}</p>
+        </div>
+      </section>
+
+      <!-- Client Info Section -->
+      @if (incident().cliente) {
+        <section class="info-section">
+          <h3 class="section-title">Información del Cliente</h3>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">Nombre:</span>
+              <span class="info-value">
+                {{ incident().cliente!.nombre }} {{ incident().cliente!.apellido }}
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Teléfono:</span>
+              <span class="info-value">{{ incident().cliente!.telefono }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Email:</span>
+              <span class="info-value">{{ incident().cliente!.email }}</span>
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- Vehicle Info Section -->
+      @if (incident().vehiculo) {
+        <section class="info-section">
+          <h3 class="section-title">Información del Vehículo</h3>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">Marca/Modelo:</span>
+              <span class="info-value">
+                {{ incident().vehiculo!.marca }} {{ incident().vehiculo!.modelo }}
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Año:</span>
+              <span class="info-value">{{ incident().vehiculo!.anio }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Placa:</span>
+              <span class="info-value">{{ incident().vehiculo!.placa }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Color:</span>
+              <span class="info-value">{{ incident().vehiculo!.color }}</span>
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- Location Section -->
+      @if (incident().ubicacion) {
+        <section class="info-section">
+          <h3 class="section-title">Ubicación</h3>
+          <div class="info-item">
+            <span class="info-label">Dirección:</span>
+            <span class="info-value">{{ incident().ubicacion }}</span>
+          </div>
+          @if (incident().direccion_referencia) {
+            <div class="info-item">
+              <span class="info-label">Referencia:</span>
+              <span class="info-value">{{ incident().direccion_referencia }}</span>
+            </div>
+          }
+          @if (incident().latitud && incident().longitud) {
+            <div class="map-placeholder">
+              <p>📍 Mapa: {{ incident().latitud }}, {{ incident().longitud }}</p>
+              <p class="map-note">Integración de mapa pendiente</p>
+            </div>
+          }
+        </section>
+      }
+
+      <!-- Suggested Technician Section -->
+      @if (incident().suggested_technician) {
+        <section class="info-section">
+          <h3 class="section-title">Técnico Sugerido</h3>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">Nombre:</span>
+              <span class="info-value">{{ incident().suggested_technician!.technician_name }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Distancia:</span>
+              <span class="info-value">{{ incident().suggested_technician!.distance_km }} km</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Compatibilidad:</span>
+              <span class="info-value">
+                {{ (incident().suggested_technician!.compatibility_score * 100).toFixed(0) }}%
+              </span>
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- AI Analysis Section -->
+      @if (aiAnalysis()) {
+        <section class="info-section ai-section">
+          <h3 class="section-title">💡 Análisis de IA</h3>
+          @if (loadingAI()) {
+            <p class="loading-text">Cargando análisis...</p>
+          } @else {
+            <div class="ai-content">
+              <p class="ai-analysis">{{ aiAnalysis()!.analysis }}</p>
+              @if (aiAnalysis()!.suggested_category) {
+                <div class="ai-suggestion">
+                  <span class="ai-label">Categoría sugerida:</span>
+                  <span class="ai-value">{{ aiAnalysis()!.suggested_category }}</span>
+                </div>
+              }
+              @if (aiAnalysis()!.suggested_priority) {
+                <div class="ai-suggestion">
+                  <span class="ai-label">Prioridad sugerida:</span>
+                  <span class="ai-value">{{ aiAnalysis()!.suggested_priority }}</span>
+                </div>
+              }
+              <div class="ai-confidence">
+                Confianza: {{ (aiAnalysis()!.confidence_score * 100).toFixed(0) }}%
+              </div>
+            </div>
+          }
+        </section>
+      }
+
+      <!-- Evidence Section -->
+      @if (incident().evidencias && incident().evidencias!.length > 0) {
+        <section class="info-section">
+          <h3 class="section-title">Evidencias</h3>
+          <div class="evidence-grid">
+            @for (evidence of incident().evidencias; track evidence.id) {
+              <div class="evidence-item">
+                @if (evidence.tipo === 'imagen') {
+                  <img 
+                    appLazyImage 
+                    [src]="evidence.url" 
+                    [alt]="evidence.descripcion || 'Evidencia'" 
+                    class="evidence-image">
+                } @else if (evidence.tipo === 'audio') {
+                  <div class="evidence-audio">
+                    <span class="audio-icon">🎵</span>
+                    <span>Audio</span>
+                  </div>
+                }
+                @if (evidence.descripcion) {
+                  <p class="evidence-description">{{ evidence.descripcion }}</p>
+                }
+              </div>
+            }
+          </div>
+        </section>
+      }
+    </div>
+
+    <!-- Footer with Action Buttons -->
+    <div class="panel-footer">
+      @if (canAccept()) {
+        <button 
+          class="action-button accept-button" 
+          (click)="openAcceptModal()"
+          [disabled]="loadingAction()">
+          @if (loadingAction()) {
+            <span class="spinner"></span>
+          }
+          Aceptar Solicitud
+        </button>
+      }
+      
+      @if (canReject()) {
+        <button 
+          class="action-button reject-button" 
+          (click)="openRejectModal()"
+          [disabled]="loadingAction()">
+          Rechazar
+        </button>
+      }
+      
+      @if (canGoToTracking()) {
+        <button 
+          class="action-button tracking-button" 
+          (click)="goToTracking()">
+          Ir a Seguimiento
+        </button>
+      }
+    </div>
+
+    <!-- Modals -->
+    @if (showAcceptModal()) {
+      <app-accept-modal
+        [incident]="incident()"
+        [aiAnalysis]="aiAnalysis()"
+        [loading]="loadingAction()"
+        (accept)="handleAccept($event)"
+        (cancel)="showAcceptModal.set(false)"
+      />
+    }
+
+    @if (showRejectModal()) {
+      <app-reject-modal
+        [loading]="loadingAction()"
+        (reject)="handleReject($event)"
+        (cancel)="showRejectModal.set(false)"
+      />
+    }
+
+    @if (showAssignTechnicianModal()) {
+      <app-assign-technician-modal
+        [incident]="incident()"
+        (assign)="handleAssignTechnician($event)"
+        (cancel)="showAssignTechnicianModal.set(false)"
+      />
+    }
+  </div>
+</div>

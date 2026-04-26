@@ -83,7 +83,7 @@ export class RoutingService {
   /**
    * Search nearby places
    */
-  searchNearby(lat: number, lng: number, query: string, radius: number = 5000): Observable<{ data: any[] }> {
+  searchNearby(lat: number, lng: number, query: string, radius = 5000): Observable<{ data: any[] }> {
     return this.http.post<{ data: any[] }>(
       `${this.baseUrl}/search-nearby`,
       { lat, lng, query, radius }

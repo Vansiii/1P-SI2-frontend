@@ -183,7 +183,7 @@ export class NotificationsService {
    *
    * @param unreadOnly When true, only fetch unread notifications.
    */
-  getNotifications(unreadOnly: boolean = false): Observable<Notification[]> {
+  getNotifications(unreadOnly = false): Observable<Notification[]> {
     const params: Record<string, string> = unreadOnly ? { unread_only: 'true' } : {};
     return this.http
       .get<ApiResponse<Notification[]>>(this.apiUrl, { params })

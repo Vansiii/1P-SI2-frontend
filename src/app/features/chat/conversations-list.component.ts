@@ -1,5 +1,6 @@
-import { Component, OnInit, Output, EventEmitter } from '@angular/core';
+import { Component, OnInit, Output, EventEmitter, DestroyRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ChatService } from '../../core/services/chat.service';
 import { Conversation } from '../../core/models/chat.model';
 
@@ -254,12 +255,13 @@ import { Conversation } from '../../core/models/chat.model';
   `]
 })
 export class ConversationsListComponent implements OnInit {
+  private readonly chatService = inject(ChatService);
+  private readonly destroyRef = inject(DestroyRef);
+
   @Output() conversationSelected = new EventEmitter<Conversation>();
 
   conversations: Conversation[] = [];
-  isLoading: boolean = true;
-
-  constructor(private chatService: ChatService) {}
+  isLoading = true;
 
   ngOnInit(): void {
     this.loadConversations();
@@ -267,20 +269,22 @@ export class ConversationsListComponent implements OnInit {
 
   loadConversations(): void {
     this.isLoading = true;
-    this.chatService.getUserConversations().subscribe({
-      next: (conversations: any[]) => {
-        this.conversations = conversations.sort((a: any, b: any) => {
-          const dateA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-          const dateB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-          return dateB - dateA;
-        });
-        this.isLoading = false;
-      },
-      error: (error: any) => {
-        console.error('Error loading conversations:', error);
-        this.isLoading = false;
-      }
-    });
+    this.chatService.getUserConversations()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (conversations: any[]) => {
+          this.conversations = conversations.sort((a: any, b: any) => {
+            const dateA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+            const dateB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+            return dateB - dateA;
+          });
+          this.isLoading = false;
+        },
+        error: (error: any) => {
+          console.error('Error loading conversations:', error);
+          this.isLoading = false;
+        }
+      });
   }
 
   selectConversation(conversation: Conversation): void {

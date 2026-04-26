@@ -1,14 +1,17 @@
 import { Component, OnInit, OnDestroy, inject, signal, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ScrollingModule } from '@angular/cdk/scrolling';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router, ActivatedRoute } from '@angular/router';
 import { environment } from '../../../../environments/environment';
 import {
   IncidentsService,
   type IncidentAiAnalysis,
-  type Incident as ServiceIncident,
+  type LegacyIncident as ServiceIncident,
 } from '../../../core/services/incidents.service';
+import { WebSocketService } from '../../../core/services/websocket.service';
+import { AuthService } from '../../../core/services/auth.service';
 
 interface TechnicianBasicInfo {
   id: number;
@@ -44,8 +47,8 @@ interface Incident {
   categoria_ia: string | null;
   created_at: string;
   direccion_referencia: string | null;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   client_id: number;
   vehiculo_id: number;
   taller_id: number | null;
@@ -99,7 +102,7 @@ interface ApiDetailResponse {
 @Component({
   selector: 'app-incidents-list',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ScrollingModule],
   templateUrl: './incidents-list.html',
   styleUrl: './incidents-list.css'
 })
@@ -108,9 +111,13 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   private readonly incidentsService = inject(IncidentsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly wsService = inject(WebSocketService);
+  private readonly authService = inject(AuthService);
   private readonly apiUrl = `${environment.apiUrl}/incidentes`;
 
-  incidents = signal<Incident[]>([]);
+  // ✅ SEPARACIÓN DE LISTAS: Base completa vs Filtrada
+  private allIncidents = signal<Incident[]>([]); // Lista completa para WebSocket
+  incidents = signal<Incident[]>([]); // Lista filtrada para UI
   loading = signal(false);
   error = signal<string | null>(null);
   success = signal<string | null>(null);
@@ -148,29 +155,70 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
 
   readonly filteredIncidents = computed(() => {
     const filter = this.selectedFilter();
-    const allIncidents = this.incidents();
+    const allIncidents = this.allIncidents(); // ✅ Usar lista completa para filtrar
+    
+    console.log('🔍 Filtering incidents:', {
+      filter,
+      total: allIncidents.length,
+      incidents: allIncidents.map(i => ({ id: i.id, estado: i.estado_actual, taller_id: i.taller_id }))
+    });
     
     if (filter === 'todos') {
+      console.log('✅ Filter "todos" - returning all incidents:', allIncidents.length);
       return allIncidents;
     }
     
     if (filter === 'pendiente') {
       // Los incidentes pendientes pueden venir del endpoint /pendientes/asignacion
       // que incluye incidentes con estado 'pendiente' o que están esperando asignación
-      return allIncidents.filter(incident => 
+      const filtered = allIncidents.filter(incident => 
         incident.estado_actual === 'pendiente' || 
         (incident.estado_actual === 'pendiente' && !incident.taller_id)
       );
+      console.log('✅ Filter "pendiente" - filtered:', {
+        count: filtered.length,
+        ids: filtered.map(i => i.id)
+      });
+      return filtered;
     }
     
-    return allIncidents.filter(incident => incident.estado_actual === filter);
+    const filtered = allIncidents.filter(incident => incident.estado_actual === filter);
+    console.log('✅ Filter result:', {
+      filter,
+      count: filtered.length,
+      ids: filtered.map(i => i.id)
+    });
+    return filtered;
   });
 
   readonly incidentsByStatus = computed(() => {
     return this.statusCounts();
   });
 
+  // Computed signal for virtual scroll item size based on screen size
+  readonly virtualScrollItemSize = computed(() => {
+    // Check if we're on mobile (this is a simple approximation)
+    return window.innerWidth <= 768 ? 160 : 180;
+  });
+
+  // Track by function for virtual scroll performance
+  trackByIncidentId(index: number, incident: Incident): number {
+    return incident.id;
+  }
+
   constructor() {
+    // ✅ Effect para aplicar filtro automáticamente cuando cambie
+    effect(() => {
+      const filtered = this.filteredIncidents();
+      this.incidents.set(filtered);
+      
+      console.log('✅ Auto-filter applied:', {
+        filter: this.selectedFilter(),
+        total: this.allIncidents().length,
+        filtered: filtered.length
+      });
+    });
+
     // Manejar mini-mapa en vista de detalle
     effect(() => {
       const incident = this.selectedIncident();
@@ -208,30 +256,78 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     });
 
     // ✅ Suscribirse al servicio reactivo de incidentes
+    // IMPORTANTE: Actualizar lista completa y aplicar filtro automáticamente
     this.incidentsService.incidents$.subscribe(incidents => {
+      const existingIncidents = this.allIncidents(); // ✅ Obtener lista actual
+      
+      // ✅ FUSIONAR incidentes en lugar de reemplazar
+      // Crear un mapa de incidentes existentes por ID
+      const existingMap = new Map(existingIncidents.map(inc => [inc.id, inc]));
+      
       // Convertir los incidentes del servicio al formato local
-      const localIncidents: Incident[] = incidents.map(inc => ({
-        id: inc.id,
-        descripcion: inc.descripcion,
-        estado_actual: inc.estado_actual,
-        prioridad_ia: inc.prioridad_ia,
-        categoria_ia: inc.categoria_ia,
-        created_at: inc.created_at,
-        direccion_referencia: inc.direccion_referencia,
-        latitude: inc.latitud,
-        longitude: inc.longitud,
-        client_id: inc.cliente_id,
-        vehiculo_id: inc.vehiculo_id,
-        taller_id: inc.taller_id,
-        tecnico_id: inc.tecnico_id,
-        technician: null,
-        workshop: null,
-        suggested_technician: null,
-        suggested_technicians: [],
-        ai_analysis: null
-      }));
-      this.incidents.set(localIncidents);
-      console.log('✅ Incidents updated from service:', incidents.length);
+      const incomingIncidents: Incident[] = incidents.map(inc => {
+        // Buscar el incidente existente para preservar campos locales
+        const existing = existingMap.get(inc.id);
+        
+        // Convertir suggested_technician del servicio al formato local
+        let suggestedTech: SuggestedTechnicianInfo | null = null;
+        if (inc.suggested_technician && inc.suggested_technician.technician_name) {
+          const nameParts = inc.suggested_technician.technician_name.split(' ');
+          suggestedTech = {
+            technician_id: inc.suggested_technician.technician_id,
+            first_name: nameParts[0] || '',
+            last_name: nameParts.slice(1).join(' ') || '',
+            phone: null,
+            final_score: inc.suggested_technician.compatibility_score || 0,
+            distance_km: inc.suggested_technician.distance_km || 0,
+            ai_reasoning: null,
+            assignment_strategy: 'ai_assisted'
+          };
+        }
+        
+        return {
+          id: inc.id,
+          descripcion: inc.descripcion,
+          estado_actual: inc.estado_actual,
+          prioridad_ia: inc.prioridad_ia,
+          categoria_ia: inc.categoria_ia,
+          created_at: inc.created_at,
+          direccion_referencia: inc.direccion_referencia,
+          latitude: inc.latitud,
+          longitude: inc.longitud,
+          client_id: inc.cliente_id,
+          vehiculo_id: inc.vehiculo_id,
+          taller_id: inc.taller_id,
+          tecnico_id: inc.tecnico_id,
+          technician: null,
+          workshop: null,
+          // ✅ Usar suggested_technician convertido del servicio si existe, sino preservar el existente
+          suggested_technician: suggestedTech || existing?.suggested_technician || null,
+          _isTimedOut: existing?._isTimedOut || false
+        };
+      });
+      
+      // ✅ Actualizar o agregar cada incidente del servicio
+      incomingIncidents.forEach(incoming => {
+        existingMap.set(incoming.id, incoming);
+      });
+      
+      // ✅ Convertir el mapa de vuelta a array
+      const mergedIncidents = Array.from(existingMap.values());
+      
+      // ✅ Actualizar lista completa con incidentes fusionados
+      this.allIncidents.set(mergedIncidents);
+      
+      // ✅ Aplicar filtro automáticamente
+      const filtered = this.filteredIncidents();
+      this.incidents.set(filtered);
+      
+      console.log('✅ Incidents updated from service (merged, filter preserved):', {
+        total: mergedIncidents.length,
+        filtered: filtered.length,
+        filter: this.selectedFilter(),
+        incoming: incomingIncidents.length
+      });
     });
 
     this.incidentsService.loading$.subscribe(loading => {
@@ -245,6 +341,7 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    // ✅ Cargar datos iniciales una sola vez
     this.loadStatusCounts();
     this.loadIncidents();
     this.loadLeaflet();
@@ -274,12 +371,19 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
 
   /**
    * ✅ Conectar WebSocket para recibir actualizaciones en tiempo real
+   * 
+   * NOTA: Los eventos WebSocket son manejados centralmente por IncidentsService.
+   * Este componente solo necesita suscribirse al observable incidents$ del servicio.
+   * Las suscripciones directas a eventos WebSocket causaban procesamiento duplicado.
    */
   connectWebSocket(): void {
-    // if (!this.wsService.isConnected()) {
-    //   this.wsService.connect();
-    // }
-    console.log('✅ WebSocket connected for incidents list');
+    // Conectar WebSocket si no está conectado
+    if (!this.wsService.isConnected()) {
+      this.wsService.connect();
+    }
+    
+    console.log('✅ WebSocket connected - events handled centrally by IncidentsService');
+    console.log('📡 Component subscribes to IncidentsService.incidents$ for reactive updates');
   }
 
   destroyMap(): void {
@@ -335,33 +439,42 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   }
 
   async loadLeaflet() {
-    if (!document.getElementById('leaflet-css')) {
-      const link = document.createElement('link');
-      link.id = 'leaflet-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
-    }
+    try {
+      if (!document.getElementById('leaflet-css')) {
+        const link = document.createElement('link');
+        link.id = 'leaflet-css';
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        link.onerror = () => console.warn('Failed to load Leaflet CSS');
+        document.head.appendChild(link);
+      }
 
-    if (!(window as any).L) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
+      if (!(window as any).L) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+          script.onload = resolve;
+          script.onerror = (error) => {
+            console.warn('Failed to load Leaflet library:', error);
+            reject(error);
+          };
+          document.head.appendChild(script);
+        });
+        this.L = (window as any).L;
+      }
+    } catch (error) {
+      console.warn('Leaflet library could not be loaded. Map features will be disabled.', error);
+      this.L = null;
     }
-
-    this.L = (window as any).L;
   }
 
   loadIncidents() {
-    // ✅ Cargar todos los incidentes para filtrado local
+    // ✅ Cargar incidentes del taller actual (backend ya filtra automáticamente)
     this.loading.set(true);
     this.error.set(null);
     
-    // Cargar todos los estados en paralelo
+    // ✅ El backend filtra automáticamente por taller cuando el usuario es tipo "workshop"
+    // Solo necesitamos hacer requests para los estados que el taller puede ver
     const pendientesRequest = this.http.get<ApiResponse>(`${this.apiUrl}/pendientes/asignacion`);
     const asignadosRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=asignado`);
     const enProcesoRequest = this.http.get<ApiResponse>(`${this.apiUrl}?estado=en_proceso`);
@@ -373,7 +486,7 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       enProcesoRequest.toPromise(),
       resueltosRequest.toPromise()
     ]).then(responses => {
-      // Combinar todos los incidentes
+      // Combinar todos los incidentes (ya filtrados por taller en backend)
       const allIncidents = [
         ...(responses[0]?.data || []),
         ...(responses[1]?.data || []),
@@ -381,8 +494,21 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
         ...(responses[3]?.data || [])
       ];
       
-      console.log('✅ All incidents loaded for filtering:', allIncidents.length);
-      this.incidents.set(allIncidents);
+      console.log('✅ Workshop incidents loaded (backend filtered):', allIncidents.length);
+      
+      // ✅ Actualizar lista completa
+      this.allIncidents.set(allIncidents);
+      
+      // ✅ Aplicar filtro actual
+      const filtered = this.filteredIncidents();
+      this.incidents.set(filtered);
+      
+      console.log('✅ Filter applied after load:', {
+        total: allIncidents.length,
+        filtered: filtered.length,
+        filter: this.selectedFilter()
+      });
+      
       this.loading.set(false);
     }).catch(err => {
       console.error('Error loading incidents:', err);
@@ -416,6 +542,11 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       ];
       
       console.log('All incidents loaded for map:', allIncidents.length);
+      
+      // ✅ Actualizar lista completa
+      this.allIncidents.set(allIncidents);
+      
+      // ✅ Para el mapa, usar todos los incidentes
       this.incidents.set(allIncidents);
       
       // Actualizar marcadores si estamos en vista de mapa
@@ -437,11 +568,20 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     this.selectedFilter.set(filter);
     this.selectedIncident.set(null);
     
+    // ✅ Aplicar filtro automáticamente usando computed signal
+    const filtered = this.filteredIncidents();
+    this.incidents.set(filtered);
+    
+    console.log('✅ Filter applied:', {
+      filter,
+      total: this.allIncidents().length,
+      filtered: filtered.length
+    });
+    
     // Si estamos en vista de mapa, actualizar el mapa con el filtro
     if (this.viewMode() === 'map') {
       this.loadIncidentsForMap();
     }
-    // En vista de lista, el filtrado se hace automáticamente con el computed filteredIncidents
   }
   
   loadIncidentsForMap() {
@@ -464,6 +604,9 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       this.http.get<ApiResponse>(url).subscribe({
         next: (response) => {
           console.log('Filtered incidents loaded for map:', response.data.length);
+          
+          // ✅ Para filtros específicos en mapa, actualizar ambas listas
+          this.allIncidents.set(response.data);
           this.incidents.set(response.data);
           
           // Actualizar marcadores
@@ -813,17 +956,28 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
 
   centerMapOnIncident(incident: Incident) {
     if (!this.map) return;
+    if (incident.latitude === null || incident.longitude === null) {
+      console.warn('Incident has no coordinates');
+      return;
+    }
     const position: [number, number] = [incident.latitude, incident.longitude];
     this.map.setView(position, 15);
   }
 
   initMiniMap(incident: Incident) {
-    const mapElement = document.getElementById(`mini-map-${incident.id}`);
-    if (!mapElement || !this.L) return;
+    try {
+      const mapElement = document.getElementById(`mini-map-${incident.id}`);
+      if (!mapElement || !this.L) return;
 
-    const position: [number, number] = [incident.latitude, incident.longitude];
+      // Validar coordenadas
+      if (incident.latitude === null || incident.longitude === null) {
+        console.warn('Incident has no coordinates, cannot display mini map');
+        return;
+      }
 
-    const miniMap = this.L.map(`mini-map-${incident.id}`, {
+      const position: [number, number] = [incident.latitude, incident.longitude];
+
+      const miniMap = this.L.map(`mini-map-${incident.id}`, {
       dragging: false,
       touchZoom: false,
       scrollWheelZoom: false,
@@ -838,14 +992,17 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       maxZoom: 19,
     }).addTo(miniMap);
 
-    this.L.circleMarker(position, {
-      radius: 8,
-      fillColor: '#ea580c',
-      color: '#ffffff',
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 1
-    }).addTo(miniMap);
+      this.L.circleMarker(position, {
+        radius: 8,
+        fillColor: '#ea580c',
+        color: '#ffffff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 1
+      }).addTo(miniMap);
+    } catch (error) {
+      console.warn(`Failed to initialize mini map for incident ${incident.id}:`, error);
+    }
   }
 
   getMarkerColor(estado: string): string {
@@ -961,7 +1118,7 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
 
     const acceptWithTechnician = this.acceptWithSuggestedTechnician();
 
-    this.http.post<ApiResponse>(`${this.apiUrl}/${incident.id}/aceptar`, {
+    this.http.post<ApiDetailResponse>(`${this.apiUrl}/${incident.id}/aceptar`, {
       accept_suggested_technician: acceptWithTechnician
     }).subscribe({
       next: (response) => {
@@ -969,10 +1126,17 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
           ? 'Solicitud aceptada con técnico asignado. El incidente está en proceso.'
           : 'Solicitud aceptada. Ahora puedes asignar un técnico manualmente.';
         this.success.set(message);
+        
+        // ✅ NUEVO: Actualizar selectedIncident con los datos de respuesta
+        // Esto preserva los datos de recomendación de IA y el estado actualizado
+        if (response.data) {
+          this.selectedIncident.set(response.data);
+          console.log('✅ Selected incident updated with response data:', response.data);
+        }
+        
         this.closeAcceptModal();
-        this.selectedIncident.set(null);
         this.loadStatusCounts(); // Actualizar contadores
-        this.loadIncidents();
+        this.loadIncidents(); // Recargar lista
         this.isProcessing.set(false);
         
         // Clear success message after 5 seconds
@@ -1123,9 +1287,10 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   /**
    * ✅ Verificar timeouts de incidentes pendientes
    * Verifica si los incidentes han excedido el tiempo de respuesta
+   * y notifica al backend para disparar la reasignación automática
    */
   checkTimeouts() {
-    const currentIncidents = this.incidents();
+    const currentIncidents = this.allIncidents(); // ✅ Usar lista completa
     let hasChanges = false;
 
     const updatedIncidents = currentIncidents.map(incident => {
@@ -1141,12 +1306,21 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
         const wasTimedOut = incident._isTimedOut || false;
         const isTimedOut = now.getTime() >= timeoutAt.getTime();
 
-        // Log para debugging
-        if (incident.id === 47 || incident.id === 31) {
-          console.log(`🔍 Incident #${incident.id}:`, {
-            timeout_at: incident.suggested_technician.timeout_at,
-            isTimedOut,
-            wasTimedOut
+        // ✅ NUEVO: Notificar al backend cuando ocurre el timeout
+        if (isTimedOut && !wasTimedOut) {
+          console.log(`⏰ Incident #${incident.id} timed out - notifying backend for reassignment`);
+          
+          // Notificar al backend para que dispare la reasignación automática
+          this.http.post(`${this.apiUrl}/${incident.id}/timeout`, {}).subscribe({
+            next: () => {
+              console.log(`✅ Backend notified of timeout for incident #${incident.id}`);
+              console.log(`🔄 Automatic reassignment should be triggered by backend`);
+            },
+            error: (err) => {
+              console.error(`❌ Error notifying timeout for incident #${incident.id}:`, err);
+              // No bloquear la UI si falla la notificación
+              // El backend tiene su propio sistema de verificación de timeouts
+            }
           });
         }
 
@@ -1166,7 +1340,12 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
 
     // Solo actualizar si hay cambios en el estado de timeout
     if (hasChanges) {
-      this.incidents.set(updatedIncidents);
+      // ✅ Actualizar lista completa
+      this.allIncidents.set(updatedIncidents);
+      
+      // ✅ Aplicar filtro automáticamente
+      const filtered = this.filteredIncidents();
+      this.incidents.set(filtered);
     }
   }
 
@@ -1175,6 +1354,69 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
    */
   isIncidentTimedOut(incident: Incident): boolean {
     return incident._isTimedOut === true;
+  }
+
+  /**
+   * ✅ Manejar evento de incidente asignado
+   * CORREGIDO: Solo actualizar contadores, IncidentsService maneja el estado
+   */
+  private handleIncidentAssigned(data: any): void {
+    console.log('📨 Incident assigned event - updating counters only');
+    // ✅ Solo actualizar contadores, NO recargar toda la lista
+    this.loadStatusCounts();
+  }
+
+  /**
+   * ✅ Manejar evento de asignación aceptada
+   * 
+   * NOTA: IncidentsService ya maneja la actualización del estado del incidente.
+   * Este handler solo actualiza los contadores de la UI.
+   */
+  private handleAssignmentAccepted(data: any): void {
+    console.log('📨 Assignment accepted event - updating counters only');
+    this.loadStatusCounts();
+  }
+
+  /**
+   * ✅ Manejar evento de asignación rechazada
+   * 
+   * NOTA: IncidentsService ya maneja la actualización del estado del incidente.
+   * Este handler solo actualiza los contadores de la UI.
+   */
+  private handleAssignmentRejected(data: any): void {
+    console.log('📨 Assignment rejected event - updating counters only');
+    this.loadStatusCounts();
+  }
+
+  /**
+   * ✅ Manejar evento de timeout de asignación
+   * 
+   * NOTA: IncidentsService ya maneja la actualización del estado del incidente.
+   * Este handler solo actualiza los contadores de la UI.
+   */
+  private handleAssignmentTimeout(data: any): void {
+    console.log('📨 Assignment timeout event - updating counters only');
+    this.loadStatusCounts();
+  }
+
+  /**
+   * ✅ Manejar evento de búsqueda de taller
+   * 
+   * NOTA: IncidentsService ya maneja este evento.
+   */
+  private handleSearchingWorkshop(data: any): void {
+    console.log('📨 Searching workshop event - handled by IncidentsService');
+  }
+
+  /**
+   * ✅ Manejar evento de sin taller disponible
+   * 
+   * NOTA: IncidentsService ya maneja la actualización del estado del incidente.
+   * Este handler solo actualiza los contadores de la UI.
+   */
+  private handleNoWorkshopAvailable(data: any): void {
+    console.log('📨 No workshop available event - updating counters only');
+    this.loadStatusCounts();
   }
 
 }

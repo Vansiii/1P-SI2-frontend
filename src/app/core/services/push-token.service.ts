@@ -93,7 +93,7 @@ export class PushTokenService {
   /**
    * Enviar notificación de prueba
    */
-  sendTestNotification(message: string = 'Test notification'): Observable<any> {
+  sendTestNotification(message = 'Test notification'): Observable<any> {
     return this.http.post(`${this.baseUrl}/test`, { message });
   }
 }

@@ -44,6 +44,10 @@ export class ChatService {
         case 'new_chat_message':
           this.handleNewChatMessage(message.data);
           break;
+        case 'chat.message_sent':
+          // Handle RealTimeEvent format from OutboxProcessor
+          this.handleChatMessageSent(message.data);
+          break;
         case 'user_typing':
           this.handleUserTyping(message.data);
           break;
@@ -187,21 +191,58 @@ export class ChatService {
   }
 
   /**
+   * Handle chat.message_sent event from OutboxProcessor (RealTimeEvent format)
+   */
+  private handleChatMessageSent(data: any): void {
+    try {
+      console.log('📨 Handling chat.message_sent event:', data);
+      
+      const message: Message = {
+        id: data.message_id,
+        incident_id: data.incident_id,
+        sender_id: data.sender_id,
+        sender_name: data.sender_name,
+        sender_role: data.sender_role,
+        message: data.content,
+        message_type: 'text',
+        is_read: false,
+        read_at: undefined,
+        created_at: data.sent_at || new Date().toISOString(),
+        updated_at: undefined
+      };
+
+      this.processNewMessage(message);
+      
+      console.log(`💬 Chat message processed for incident ${message.incident_id} from ${message.sender_name}`);
+    } catch (error) {
+      console.error('Error handling chat.message_sent event:', error, data);
+    }
+  }
+
+  /**
    * Procesar nuevo mensaje (común para ambos formatos)
    */
   private processNewMessage(message: Message): void {
     // Emitir mensaje nuevo
     this.newMessageSubject.next(message);
 
-    // Actualizar cache de mensajes si existe
-    const messagesSubject = this.messagesCache.get(message.incident_id);
-    if (messagesSubject) {
-      const currentMessages = messagesSubject.value;
-      // Evitar duplicados
-      if (!currentMessages.some(m => m.id === message.id)) {
-        // Agregar al final (orden cronológico)
-        messagesSubject.next([...currentMessages, message]);
-      }
+    // Actualizar cache de mensajes - crear cache si no existe
+    let messagesSubject = this.messagesCache.get(message.incident_id);
+    if (!messagesSubject) {
+      console.log(`📦 Creating cache for incident ${message.incident_id} on-demand`);
+      messagesSubject = new BehaviorSubject<Message[]>([]);
+      this.messagesCache.set(message.incident_id, messagesSubject);
+    }
+
+    const currentMessages = messagesSubject.value;
+    // Evitar duplicados
+    if (!currentMessages.some(m => m.id === message.id)) {
+      // Agregar al final (orden cronológico)
+      const updatedMessages = [...currentMessages, message];
+      console.log(`📦 Updating cache for incident ${message.incident_id}: ${currentMessages.length} -> ${updatedMessages.length} messages`);
+      messagesSubject.next(updatedMessages);
+    } else {
+      console.log(`⚠️ Duplicate message ${message.id} for incident ${message.incident_id}, skipping`);
     }
 
     // Actualizar contador de no leídos
@@ -268,11 +309,11 @@ export class ChatService {
    */
   getMessages(
     incidentId: number,
-    limit: number = 50,
-    offset: number = 0,
+    limit = 50,
+    offset = 0,
     beforeId?: number
   ): Observable<Message[]> {
-    let params: any = { limit, offset };
+    const params: any = { limit, offset };
     if (beforeId) {
       params.before_id = beforeId;
     }
@@ -308,7 +349,7 @@ export class ChatService {
   /**
    * Get all conversations for current user
    */
-  getUserConversations(limit: number = 20): Observable<Conversation[]> {
+  getUserConversations(limit = 20): Observable<Conversation[]> {
     return this.http.get<Conversation[]>(`${this.apiUrl}/conversations`, { params: { limit } });
   }
 
@@ -317,5 +358,26 @@ export class ChatService {
    */
   deleteMessage(messageId: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/messages/${messageId}`);
+  }
+
+  /**
+   * Send typing indicator to server (HTTP endpoint)
+   */
+  sendTypingIndicatorHTTP(incidentId: number): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/incidents/${incidentId}/typing`, {});
+  }
+
+  /**
+   * Send typing stop indicator to server (HTTP endpoint)
+   */
+  sendTypingStopIndicatorHTTP(incidentId: number): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/incidents/${incidentId}/typing/stop`, {});
+  }
+
+  /**
+   * Mark a specific message as read (for read receipts)
+   */
+  markMessageAsRead(messageId: number): Observable<{ read_at: string }> {
+    return this.http.post<{ read_at: string }>(`${this.apiUrl}/messages/${messageId}/read`, {});
   }
 }

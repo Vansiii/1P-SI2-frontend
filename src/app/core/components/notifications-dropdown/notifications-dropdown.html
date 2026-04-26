@@ -1,0 +1,139 @@
+<div class="notifications-wrapper">
+  <!-- Toast Notification (Global) -->
+  @if (showToast() && toastNotification()) {
+    <div class="notification-toast-global">
+      <div class="toast-icon">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </div>
+      <div class="toast-content">
+        <h4 class="toast-title">{{ toastNotification()!.title }}</h4>
+        <p class="toast-body">{{ toastNotification()!.body }}</p>
+      </div>
+      <button type="button" class="toast-close" (click)="showToast.set(false)" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  }
+
+  <!-- Notification Bell Button -->
+  <button 
+    type="button" 
+    class="notification-bell"
+    [class.has-notifications]="notificationCount() > 0"
+    (click)="toggle(); $event.stopPropagation()"
+    aria-label="Notificaciones"
+  >
+    <svg class="bell-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+    
+    @if (notificationCount() > 0) {
+      <span class="notification-badge">
+        {{ notificationCount() > 99 ? '99+' : notificationCount() }}
+      </span>
+    }
+  </button>
+
+  <!-- Dropdown Panel -->
+  @if (isOpen()) {
+    <div class="dropdown-panel" (click)="$event.stopPropagation()">
+      <!-- Header -->
+      <div class="dropdown-header">
+        <h3 class="dropdown-title">Notificaciones</h3>
+        <button 
+          type="button" 
+          class="refresh-button"
+          (click)="loadIncidents(); $event.preventDefault(); $event.stopPropagation()"
+          [disabled]="loading()"
+          aria-label="Actualizar"
+        >
+          <svg 
+            class="refresh-icon" 
+            [class.spinning]="loading()"
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            stroke-width="2"
+          >
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Content -->
+      <div class="dropdown-content">
+        @if (loading()) {
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Cargando...</p>
+          </div>
+        } @else if (displayedIncidents().length === 0) {
+          <div class="empty-state">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            <p class="empty-text">No hay notificaciones</p>
+          </div>
+        } @else {
+          <div class="notifications-list">
+            @for (incident of displayedIncidents(); track incident.id) {
+              <button
+                type="button"
+                class="notification-item"
+                (click)="navigateToIncident(incident); $event.preventDefault(); $event.stopPropagation()"
+              >
+                <div class="notification-indicator" [style.background-color]="getStatusColor(incident.estado_actual)"></div>
+                
+                <div class="notification-content">
+                  <div class="notification-header">
+                    <span class="notification-title">Incidente #{{ incident.id }}</span>
+                    <span class="notification-time">{{ getTimeAgo(incident.created_at) }}</span>
+                  </div>
+                  
+                  <p class="notification-description">{{ incident.descripcion }}</p>
+                  
+                  @if (incident.direccion_referencia) {
+                    <div class="notification-location">
+                      <svg class="location-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      <span>{{ incident.direccion_referencia }}</span>
+                    </div>
+                  }
+                </div>
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Footer -->
+      @if (displayedIncidents().length > 0) {
+        <div class="dropdown-footer">
+          <button 
+            type="button" 
+            class="view-all-button"
+            (click)="viewAll(); $event.preventDefault(); $event.stopPropagation()"
+          >
+            Ver todas las solicitudes
+            <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+      }
+    </div>
+
+    <!-- Backdrop -->
+    <div class="dropdown-backdrop" (click)="close()"></div>
+  }
+</div>

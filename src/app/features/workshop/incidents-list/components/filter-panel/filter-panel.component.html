@@ -1,0 +1,66 @@
+<div class="filter-panel">
+  <button
+    type="button"
+    class="filter-button"
+    [class.active]="isActive()('todos')"
+    (click)="selectFilter('todos')"
+    aria-label="Filtrar todos los incidentes"
+    [appTooltip]="getFilterTooltip('todos')"
+    tooltipPosition="bottom"
+  >
+    <span class="filter-label">{{ getFilterLabel('todos') }}</span>
+    <span class="count-badge">{{ getCount('todos') }}</span>
+  </button>
+
+  <button
+    type="button"
+    class="filter-button"
+    [class.active]="isActive()('pendientes')"
+    (click)="selectFilter('pendientes')"
+    aria-label="Filtrar incidentes pendientes"
+    [appTooltip]="getFilterTooltip('pendientes')"
+    tooltipPosition="bottom"
+  >
+    <span class="filter-label">{{ getFilterLabel('pendientes') }}</span>
+    <span class="count-badge">{{ getCount('pendientes') }}</span>
+  </button>
+
+  <button
+    type="button"
+    class="filter-button"
+    [class.active]="isActive()('asignadas')"
+    (click)="selectFilter('asignadas')"
+    aria-label="Filtrar incidentes asignadas"
+    [appTooltip]="getFilterTooltip('asignadas')"
+    tooltipPosition="bottom"
+  >
+    <span class="filter-label">{{ getFilterLabel('asignadas') }}</span>
+    <span class="count-badge">{{ getCount('asignadas') }}</span>
+  </button>
+
+  <button
+    type="button"
+    class="filter-button"
+    [class.active]="isActive()('en_proceso')"
+    (click)="selectFilter('en_proceso')"
+    aria-label="Filtrar incidentes en proceso"
+    [appTooltip]="getFilterTooltip('en_proceso')"
+    tooltipPosition="bottom"
+  >
+    <span class="filter-label">{{ getFilterLabel('en_proceso') }}</span>
+    <span class="count-badge">{{ getCount('en_proceso') }}</span>
+  </button>
+
+  <button
+    type="button"
+    class="filter-button"
+    [class.active]="isActive()('resueltas')"
+    (click)="selectFilter('resueltas')"
+    aria-label="Filtrar incidentes resueltas"
+    [appTooltip]="getFilterTooltip('resueltas')"
+    tooltipPosition="bottom"
+  >
+    <span class="filter-label">{{ getFilterLabel('resueltas') }}</span>
+    <span class="count-badge">{{ getCount('resueltas') }}</span>
+  </button>
+</div>

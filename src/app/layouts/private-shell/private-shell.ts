@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
-import { NotificationsPanelComponent } from '../../core/components/notifications-panel/notifications-panel';
+import { NotificationsDropdownComponent } from '../../core/components/notifications-dropdown/notifications-dropdown';
 import { IncidentsService } from '../../core/services/incidents.service';
 
 @Component({
   selector: 'app-private-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, NotificationsPanelComponent],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, NotificationsDropdownComponent],
   templateUrl: './private-shell.html',
   styleUrl: './private-shell.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -19,45 +19,10 @@ export class PrivateShellComponent {
   readonly user = this.authService.user;
   readonly sidebarOpen = signal(false);
   readonly profileMenuOpen = signal(false);
-  readonly notificationsOpen = signal(false);
   readonly isLoggingOut = signal(false);
-  readonly notificationCount = signal(0);
 
   constructor() {
-    // Cargar contador inicial de notificaciones para talleres y administradores
-    effect(() => {
-      if (this.isWorkshop()) {
-        this.loadNotificationCount();
-      } else if (this.isAdmin()) {
-        this.loadAdminNotificationCount();
-      }
-    }, { allowSignalWrites: true });
-  }
-
-  private loadNotificationCount(): void {
-    this.incidentsService.getPendingIncidents().subscribe({
-      next: (data) => {
-        const pendingCount = data.filter((i) => i.estado_actual === 'pendiente').length;
-        this.notificationCount.set(pendingCount);
-      },
-      error: (err) => {
-        console.error('Error loading notification count:', err);
-        this.notificationCount.set(0);
-      }
-    });
-  }
-
-  private loadAdminNotificationCount(): void {
-    // Cargar incidentes sin taller asignado (sin_taller_disponible)
-    this.incidentsService.getUnassignedIncidents().subscribe({
-      next: (data) => {
-        this.notificationCount.set(data.length);
-      },
-      error: (err) => {
-        console.error('Error loading admin notification count:', err);
-        this.notificationCount.set(0);
-      }
-    });
+    // El nuevo componente de notificaciones maneja su propia lógica
   }
 
   readonly displayName = computed(() => {
@@ -102,21 +67,7 @@ export class PrivateShellComponent {
   }
 
   toggleProfileMenu(): void {
-    this.notificationsOpen.set(false);
     this.profileMenuOpen.set(!this.profileMenuOpen());
-  }
-
-  toggleNotifications(): void {
-    this.profileMenuOpen.set(false);
-    this.notificationsOpen.set(!this.notificationsOpen());
-  }
-
-  closeNotifications(): void {
-    this.notificationsOpen.set(false);
-  }
-
-  onNotificationCountChange(count: number): void {
-    this.notificationCount.set(count);
   }
 
   openProfileSection(fragment: string): void {
