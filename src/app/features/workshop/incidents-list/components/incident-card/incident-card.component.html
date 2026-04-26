@@ -1,0 +1,93 @@
+<div class="incident-card">
+  <!-- Timeout Badge (top-right corner) -->
+  @if (hasTimeout()) {
+    <div 
+      class="timeout-badge"
+      [appTooltip]="timeoutTooltip()"
+      tooltipPosition="top"
+    >
+      <span class="timeout-icon">⏰</span>
+      <span class="timeout-text">TIMEOUT</span>
+    </div>
+  }
+
+  <!-- Card Header -->
+  <div class="card-header">
+    <div class="incident-id">
+      <span class="id-label">#{{ incident().id }}</span>
+    </div>
+    <div 
+      class="priority-badge" 
+      [style.background-color]="priorityColor()"
+      [appTooltip]="priorityTooltip()"
+      tooltipPosition="top"
+    >
+      {{ incident().prioridad.toUpperCase() }}
+    </div>
+  </div>
+
+  <!-- Card Body -->
+  <div class="card-body">
+    <p class="description">{{ truncatedDescription() }}</p>
+    
+    <div class="metadata">
+      <div class="metadata-item">
+        <span 
+          class="metadata-icon"
+          appTooltip="Categoría del incidente"
+          tooltipPosition="top"
+        >📋</span>
+        <span class="metadata-text">{{ categoryName() }}</span>
+      </div>
+      <div class="metadata-item">
+        <span 
+          class="metadata-icon"
+          appTooltip="Ubicación del incidente"
+          tooltipPosition="top"
+        >📍</span>
+        <span class="metadata-text">{{ locationText() }}</span>
+      </div>
+      <div class="metadata-item">
+        <span 
+          class="metadata-icon"
+          appTooltip="Fecha y hora de creación"
+          tooltipPosition="top"
+        >📅</span>
+        <span class="metadata-text">{{ formattedDate() }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card Footer -->
+  <div class="card-footer">
+    <div 
+      class="status-badge" 
+      [style.background-color]="statusColor()"
+      [appTooltip]="statusTooltip()"
+      tooltipPosition="bottom"
+    >
+      {{ incident().estado.replace('_', ' ').toUpperCase() }}
+    </div>
+    
+    @if (!hasTimeout() && timeRemaining() !== null) {
+      <div 
+        class="time-remaining"
+        [appTooltip]="timeoutTooltip()"
+        tooltipPosition="bottom"
+      >
+        <span class="time-icon">⏱️</span>
+        <span class="time-text">{{ timeRemaining() }}m restantes</span>
+      </div>
+    }
+    
+    @if (!hasSuggestedTechnician()) {
+      <div 
+        class="no-assignment-badge"
+        [appTooltip]="noTechnicianTooltip()"
+        tooltipPosition="bottom"
+      >
+        Sin asignación
+      </div>
+    }
+  </div>
+</div>

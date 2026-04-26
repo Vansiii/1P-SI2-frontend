@@ -185,10 +185,10 @@ export type AlertType = 'success' | 'error' | 'warning' | 'info';
   `]
 })
 export class AlertComponent {
-  @Input() message: string = '';
+  @Input() message = '';
   @Input() title?: string;
   @Input() type: AlertType = 'info';
-  @Input() dismissible: boolean = true;
-  @Input() visible: boolean = true;
+  @Input() dismissible = true;
+  @Input() visible = true;
   @Output() onClose = new EventEmitter<void>();
 }

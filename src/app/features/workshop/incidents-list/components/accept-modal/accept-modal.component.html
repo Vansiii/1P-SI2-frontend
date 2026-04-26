@@ -1,0 +1,118 @@
+<!-- Modal Overlay -->
+<div class="modal-overlay" (click)="onCancel()">
+  <!-- Modal Panel -->
+  <div class="modal-panel" (click)="$event.stopPropagation()">
+    <!-- Header -->
+    <div class="modal-header">
+      <h2 id="accept-modal-title" class="modal-title">Aceptar Solicitud</h2>
+      <button class="close-button" (click)="onCancel()" aria-label="Cerrar modal">
+        ✕
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="modal-content">
+      <!-- AI Recommendation Panel -->
+      @if (aiAnalysis()) {
+        <div class="ai-recommendation">
+          <div class="ai-header">
+            <span class="ai-icon">💡</span>
+            <h3 class="ai-title">Recomendación de la IA</h3>
+          </div>
+          <p class="ai-text">{{ aiAnalysis()!.analysis }}</p>
+          @if (aiAnalysis()!.confidence_score) {
+            <p class="ai-confidence">
+              Confianza: {{ (aiAnalysis()!.confidence_score * 100).toFixed(0) }}%
+            </p>
+          }
+        </div>
+      }
+
+      <!-- Options -->
+      <div class="options-container">
+        <!-- Suggested Technician Option -->
+        @if (hasSuggestedTechnician()) {
+          <div 
+            class="option suggested-option"
+            [class.selected]="isSelected('suggested')"
+            (click)="selectOption('suggested')"
+            role="button"
+            tabindex="0"
+            (keydown.enter)="selectOption('suggested')"
+            (keydown.space)="selectOption('suggested')">
+            <div class="option-header">
+              <span class="option-icon">✓</span>
+              <h4 class="option-title">Aceptar con técnico sugerido</h4>
+            </div>
+            <div class="option-details">
+              <div class="detail-item">
+                <span class="detail-label">Técnico:</span>
+                <span class="detail-value">{{ incident().suggested_technician!.technician_name }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Distancia:</span>
+                <span class="detail-value">{{ incident().suggested_technician!.distance_km }} km</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Compatibilidad:</span>
+                <span class="detail-value">
+                  {{ (incident().suggested_technician!.compatibility_score * 100).toFixed(0) }}%
+                </span>
+              </div>
+            </div>
+            @if (isSelected('suggested')) {
+              <div class="selected-indicator">
+                <span class="check-icon">✓</span>
+                Seleccionado
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Manual Assignment Option -->
+        <div 
+          class="option manual-option"
+          [class.selected]="isSelected('manual')"
+          (click)="selectOption('manual')"
+          role="button"
+          tabindex="0"
+          (keydown.enter)="selectOption('manual')"
+          (keydown.space)="selectOption('manual')">
+          <div class="option-header">
+            <span class="option-icon">👤</span>
+            <h4 class="option-title">Asignar técnico manualmente</h4>
+          </div>
+          <p class="option-description">
+            Podrás seleccionar un técnico disponible después de aceptar la solicitud.
+          </p>
+          @if (isSelected('manual')) {
+            <div class="selected-indicator">
+              <span class="check-icon">✓</span>
+              Seleccionado
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="modal-footer">
+      <button 
+        class="modal-button cancel-button" 
+        (click)="onCancel()">
+        Cancelar
+      </button>
+      <button 
+        class="modal-button confirm-button" 
+        (click)="confirmAccept()"
+        [disabled]="isConfirmDisabled() || loading()">
+        @if (loading()) {
+          <app-spinner size="small" />
+          <span>Procesando...</span>
+        } @else {
+          <span>Confirmar Aceptación</span>
+        }
+      </button>
+    </div>
+  </div>
+</div>

@@ -7,7 +7,7 @@ export const environment: Environment = {
   production: false,
   apiBaseUrl: 'http://localhost:8000/api/v1',
   apiUrl: 'http://localhost:8000/api/v1',
-  wsUrl: 'ws://localhost:8000',
+  wsUrl: 'ws://localhost:8000/api/v1',
   enableLogging: true,
   enableDebugMode: true,
   appName: 'MecánicoYa',

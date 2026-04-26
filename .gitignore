@@ -47,11 +47,28 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+.env.staging
+
+# Keep example files
+!.env.example
 
 # Generated files
 /public/firebase-config.js
 /public/firebase-messaging-sw.js
 
 # Keep example files
-!.env.example
 !/public/firebase-messaging-sw.js.example
+
+# Vercel
+.vercel
+
+# Build artifacts
+.angular/
+
+# Secrets and credentials
+*.key
+*.pem
+secrets/
+credentials/

@@ -76,12 +76,15 @@ export class TechniciansManagementComponent implements OnInit, OnDestroy {
   readonly showConfirmPassword = signal(false);
 
   private map: any = null;
-  private markers: Map<number, any> = new Map();
+  private markers = new Map<number, any>();
   private miniMap: any = null;
   private L: any = null;
   private updateInterval: any = null;
   private wsSubscription: any = null;
   private clockInterval: any = null;
+  private timeRefreshInterval: any = null;
+
+  readonly timeTick = signal(Date.now());
 
   readonly filteredTechnicians = computed(() => {
     const query = this.searchQuery().toLowerCase();
@@ -185,6 +188,11 @@ export class TechniciansManagementComponent implements OnInit, OnDestroy {
     // Iniciar reloj en tiempo real
     this.startLiveClock();
     
+    // Actualizar tiempos relativos cada 10 segundos (más frecuente para mejor sincronización)
+    this.timeRefreshInterval = setInterval(() => {
+      this.timeTick.set(Date.now());
+    }, 10_000); // 10 segundos en lugar de 60
+    
     // Actualizar ubicaciones cada 30 segundos como respaldo
     this.updateInterval = setInterval(() => {
       const currentUser = this.authService.currentUser();
@@ -208,6 +216,9 @@ export class TechniciansManagementComponent implements OnInit, OnDestroy {
     }
     if (this.clockInterval) {
       clearInterval(this.clockInterval);
+    }
+    if (this.timeRefreshInterval) {
+      clearInterval(this.timeRefreshInterval);
     }
     if (this.wsSubscription) {
       this.wsSubscription.unsubscribe();
@@ -1001,15 +1012,25 @@ export class TechniciansManagementComponent implements OnInit, OnDestroy {
     });
   }
 
-  formatRelativeTime(dateString: string): string {
+  formatRelativeTime(dateString: string, _tick = this.timeTick()): string {
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Ahora';
+    // Manejar diferencias de sincronización de reloj
+    if (diffMs < 0) {
+      return 'Ahora';
+    }
+
+    if (diffSecs < 60) {
+      if (diffSecs < 5) return 'Ahora';
+      return `Hace ${diffSecs}s`;
+    }
+    
     if (diffMins < 60) return `Hace ${diffMins}m`;
     if (diffHours < 24) return `Hace ${diffHours}h`;
     if (diffDays < 7) return `Hace ${diffDays}d`;

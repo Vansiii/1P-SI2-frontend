@@ -1,0 +1,55 @@
+<!-- Main Container -->
+<div class="incidents-list-container">
+  <!-- Connection Banner -->
+  @if (!wsConnected()) {
+    <div class="connection-banner">
+      <span class="banner-icon">⚠️</span>
+      <span class="banner-text">
+        Conexión perdida. Intentando reconectar...
+      </span>
+    </div>
+  }
+
+  <!-- Error State -->
+  @if (error()) {
+    <div class="error-state">
+      <div class="error-icon">❌</div>
+      <h3 class="error-title">Error al cargar solicitudes</h3>
+      <p class="error-message">{{ error() }}</p>
+      <button class="retry-button" (click)="retryLoad()">
+        Reintentar
+      </button>
+    </div>
+  }
+
+  <!-- Loading State -->
+  @if (loading() && !error()) {
+    <app-loading-skeleton [count]="6" />
+  }
+
+  <!-- Content -->
+  @if (!loading() && !error()) {
+    <div class="content-wrapper">
+      <!-- Filter Panel -->
+      <app-filter-panel
+        [counts]="filterCounts()"
+        [activeFilter]="activeFilter()"
+        (filterChange)="onFilterChange($event)"
+      />
+
+      <!-- Incidents Grid -->
+      <app-incidents-grid
+        [incidents]="incidents()"
+        (incidentSelect)="onIncidentSelect($event)"
+      />
+    </div>
+  }
+
+  <!-- Detail Panel -->
+  @if (isDetailOpen() && selectedIncident()) {
+    <app-incident-detail
+      [incident]="selectedIncident()!"
+      (close)="onDetailClose()"
+    />
+  }
+</div>

@@ -1,7 +1,9 @@
-import { Component, inject, OnInit, signal, AfterViewInit, OnDestroy } from '@angular/core';
+import { Component, inject, OnInit, signal, AfterViewInit, OnDestroy, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { IncidentsService, type IncidentDetailAdmin } from '../../../core/services/incidents.service';
+import { IncidentRealtimeService } from '../../../core/services/incident-realtime.service';
 import * as L from 'leaflet';
 
 @Component({
@@ -9,17 +11,38 @@ import * as L from 'leaflet';
   imports: [CommonModule, RouterLink],
   templateUrl: './incident-detail-admin.html',
   styleUrl: './incident-detail-admin.css',
-  standalone: true
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly incidentsService = inject(IncidentsService);
+  private readonly incidentRealtimeService = inject(IncidentRealtimeService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly incident = signal<IncidentDetailAdmin | null>(null);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
+  readonly timeTick = signal(Date.now());
   
   private map: L.Map | null = null;
+  private timeRefreshInterval: any = null;
+  private currentIncidentId: number | null = null;
+
+  constructor() {
+    // Subscribe to real-time incident updates
+    this.incidentRealtimeService.incidentUpdates$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(update => {
+        // Only process updates for the current incident
+        if (this.currentIncidentId && update.incidentId === this.currentIncidentId) {
+          console.log('🔔 Incident update received in detail view:', update);
+          
+          // Reload incident detail to get updated data
+          this.loadIncidentDetail(this.currentIncidentId);
+        }
+      });
+  }
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -30,6 +53,7 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
       console.log('Numeric ID:', numericId); // Debug
       
       if (numericId > 0) {
+        this.currentIncidentId = numericId;
         this.loadIncidentDetail(numericId);
       } else {
         console.error('Invalid incident ID:', id);
@@ -41,6 +65,11 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
       this.error.set('No se proporcionó un ID de incidente');
       this.loading.set(false);
     }
+
+    // Actualizar tiempos relativos cada 10 segundos (más frecuente para mejor sincronización)
+    this.timeRefreshInterval = setInterval(() => {
+      this.timeTick.set(Date.now());
+    }, 10_000); // 10 segundos en lugar de 60
   }
 
   ngAfterViewInit(): void {
@@ -52,26 +81,31 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
       this.map.remove();
       this.map = null;
     }
+    if (this.timeRefreshInterval) {
+      clearInterval(this.timeRefreshInterval);
+    }
   }
 
   loadIncidentDetail(id: number): void {
     this.loading.set(true);
     this.error.set(null);
 
-    this.incidentsService.getIncidentAdminDetail(id).subscribe({
-      next: (data) => {
-        this.incident.set(data);
-        this.loading.set(false);
-        
-        // Inicializar mapa después de que los datos estén cargados
-        setTimeout(() => this.initMap(data), 100);
-      },
-      error: (err) => {
-        console.error('Error loading incident detail:', err);
-        this.error.set('Error al cargar los detalles del incidente');
-        this.loading.set(false);
-      }
-    });
+    this.incidentsService.getIncidentAdminDetail(id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (data) => {
+          this.incident.set(data);
+          this.loading.set(false);
+          
+          // Inicializar mapa después de que los datos estén cargados
+          setTimeout(() => this.initMap(data), 100);
+        },
+        error: (err) => {
+          console.error('Error loading incident detail:', err);
+          this.error.set('Error al cargar los detalles del incidente');
+          this.loading.set(false);
+        }
+      });
   }
 
   private initMap(incident: IncidentDetailAdmin): void {
@@ -80,6 +114,12 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
     
     if (!mapElement) {
       console.error('Map element not found:', mapId);
+      return;
+    }
+
+    // Validar que existan coordenadas
+    if (incident.latitude === null || incident.longitude === null) {
+      console.warn('Incident has no coordinates, cannot display map');
       return;
     }
 
@@ -227,15 +267,25 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
     });
   }
 
-  formatTimeAgo(dateString: string): string {
+  formatTimeAgo(dateString: string, _tick = this.timeTick()): string {
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Hace un momento';
+    // Manejar diferencias de sincronización de reloj
+    if (diffMs < 0) {
+      return 'Hace un momento';
+    }
+
+    if (diffSecs < 60) {
+      if (diffSecs < 5) return 'Hace un momento';
+      return `Hace ${diffSecs} seg`;
+    }
+    
     if (diffMins < 60) return `Hace ${diffMins} min`;
     if (diffHours < 24) return `Hace ${diffHours} h`;
     if (diffDays < 7) return `Hace ${diffDays} días`;

@@ -208,7 +208,7 @@ export class TrackingService {
     technicianId: number,
     startTime?: string,
     endTime?: string,
-    limit: number = 100
+    limit = 100
   ): Observable<LocationHistory[]> {
     let params = new HttpParams().set('limit', limit.toString());
     

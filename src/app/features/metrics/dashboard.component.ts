@@ -1,9 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, DestroyRef, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData, ChartType } from 'chart.js';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MetricsService } from '../../core/services/metrics.service';
+import { DashboardRealtimeService } from '../../core/services/dashboard-realtime.service';
+import { WebSocketService } from '../../core/services/websocket.service';
 
 @Component({
   selector: 'app-metrics-dashboard',
@@ -13,15 +16,21 @@ import { MetricsService } from '../../core/services/metrics.service';
     <div class="dashboard-container">
       <div class="dashboard-header">
         <h1>Dashboard de Métricas</h1>
-        <div class="filters">
-          <select [(ngModel)]="selectedPeriod" (change)="loadMetrics()" class="filter-select">
-            <option value="7">Últimos 7 días</option>
-            <option value="30">Últimos 30 días</option>
-            <option value="90">Últimos 90 días</option>
-          </select>
-          <button class="btn-refresh" (click)="loadMetrics()">
-            <i class="icon-refresh"></i> Actualizar
-          </button>
+        <div class="header-actions">
+          <div class="connection-indicator" [class.connected]="isWebSocketConnected()" [class.disconnected]="!isWebSocketConnected()">
+            <span class="status-dot"></span>
+            <span class="status-text">{{ isWebSocketConnected() ? 'Conectado' : 'Desconectado' }}</span>
+          </div>
+          <div class="filters">
+            <select [(ngModel)]="selectedPeriod" (change)="loadMetrics()" class="filter-select">
+              <option value="7">Últimos 7 días</option>
+              <option value="30">Últimos 30 días</option>
+              <option value="90">Últimos 90 días</option>
+            </select>
+            <button class="btn-refresh" (click)="loadMetrics()">
+              <i class="icon-refresh"></i> Actualizar
+            </button>
+          </div>
         </div>
       </div>
 
@@ -38,8 +47,18 @@ import { MetricsService } from '../../core/services/metrics.service';
               <i class="icon-check-circle"></i>
             </div>
             <div class="kpi-content">
-              <h3>{{ systemMetrics?.total_incidents || 0 }}</h3>
-              <p>Total Incidentes</p>
+              <h3>{{ realtimeMetrics().activeIncidents }}</h3>
+              <p>Incidentes Activos</p>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background: #ff9800;">
+              <i class="icon-pending"></i>
+            </div>
+            <div class="kpi-content">
+              <h3>{{ realtimeMetrics().pendingIncidents }}</h3>
+              <p>Incidentes Pendientes</p>
             </div>
           </div>
 
@@ -48,18 +67,8 @@ import { MetricsService } from '../../core/services/metrics.service';
               <i class="icon-clock"></i>
             </div>
             <div class="kpi-content">
-              <h3>{{ formatMinutes(systemMetrics?.avg_response_time_minutes) }}</h3>
+              <h3>{{ formatMinutes(realtimeMetrics().averageResponseTime) }}</h3>
               <p>Tiempo Promedio de Respuesta</p>
-            </div>
-          </div>
-
-          <div class="kpi-card">
-            <div class="kpi-icon" style="background: #ff9800;">
-              <i class="icon-timer"></i>
-            </div>
-            <div class="kpi-content">
-              <h3>{{ formatMinutes(systemMetrics?.avg_resolution_time_minutes) }}</h3>
-              <p>Tiempo Promedio de Resolución</p>
             </div>
           </div>
 
@@ -68,7 +77,7 @@ import { MetricsService } from '../../core/services/metrics.service';
               <i class="icon-users"></i>
             </div>
             <div class="kpi-content">
-              <h3>{{ systemMetrics?.active_technicians || 0 }}</h3>
+              <h3>{{ realtimeMetrics().activeTechnicians }}</h3>
               <p>Técnicos Activos</p>
             </div>
           </div>
@@ -173,6 +182,57 @@ import { MetricsService } from '../../core/services/metrics.service';
       font-size: 28px;
       font-weight: 600;
       color: #333;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .connection-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.3s;
+    }
+
+    .connection-indicator.connected {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .connection-indicator.disconnected {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .connection-indicator.connected .status-dot {
+      background: #4caf50;
+    }
+
+    .connection-indicator.disconnected .status-dot {
+      background: #f44336;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
     }
 
     .filters {
@@ -354,11 +414,28 @@ import { MetricsService } from '../../core/services/metrics.service';
     }
   `]
 })
-export class MetricsDashboardComponent implements OnInit {
-  selectedPeriod: string = '30';
-  isLoading: boolean = true;
+export class MetricsDashboardComponent implements OnInit, OnDestroy {
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly metricsService = inject(MetricsService);
+  private readonly dashboardRealtimeService = inject(DashboardRealtimeService);
+  private readonly webSocketService = inject(WebSocketService);
+
+  selectedPeriod = '30';
+  isLoading = true;
   systemMetrics: any = null;
   categoryMetrics: any[] = [];
+  
+  // Fallback polling
+  private pollingInterval?: any;
+  private readonly pollingIntervalMs = 30000; // 30 seconds
+  private isPollingActive = false;
+
+  // Real-time metrics from signals
+  readonly realtimeMetrics = this.dashboardRealtimeService.metrics;
+  readonly incidentCounts = this.dashboardRealtimeService.incidentCounts;
+  readonly activeTechnicians = this.dashboardRealtimeService.activeTechnicians;
+  readonly alerts = this.dashboardRealtimeService.alerts;
+  readonly isWebSocketConnected = this.webSocketService.isConnectedSignal;
 
   // Chart data
   categoryChartData: ChartData<'pie'> = {
@@ -439,10 +516,53 @@ export class MetricsDashboardComponent implements OnInit {
     }
   };
 
-  constructor(private metricsService: MetricsService) {}
+  constructor() {
+    // Setup effect to react to real-time metrics updates
+    effect(() => {
+      const metrics = this.realtimeMetrics();
+      console.log('📊 Real-time metrics updated:', metrics);
+      
+      // Update charts when metrics change
+      if (metrics.updatedAt) {
+        this.updateChartsFromRealtimeData();
+      }
+    });
+
+    // Subscribe to alerts
+    this.dashboardRealtimeService.alert$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(alert => {
+        console.log('🚨 New alert received:', alert);
+        // TODO: Show notification to user
+      });
+
+    // Monitor WebSocket connection status for fallback
+    this.webSocketService.connectionStatus$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(status => {
+        console.log('🔌 WebSocket status changed:', status);
+        
+        if (status === 'connected') {
+          // WebSocket connected - stop polling if active
+          this.stopPolling();
+        } else if (status === 'error' || status === 'disconnected') {
+          // WebSocket failed - start polling fallback
+          this.startPollingFallback();
+        }
+      });
+  }
 
   ngOnInit(): void {
+    // Connect to WebSocket
+    this.webSocketService.connect();
+    
+    // Load initial metrics via REST
     this.loadMetrics();
+  }
+
+  ngOnDestroy(): void {
+    // Cleanup polling on component destroy
+    this.stopPolling();
   }
 
   loadMetrics(): void {
@@ -535,6 +655,59 @@ export class MetricsDashboardComponent implements OnInit {
         backgroundColor: '#4caf50'
       }]
     };
+  }
+
+  updateChartsFromRealtimeData(): void {
+    // Update incident counts chart from real-time data
+    const counts = this.incidentCounts();
+    const statusLabels = Object.keys(counts.byStatus);
+    const statusCounts = Object.values(counts.byStatus);
+    
+    // Only update if we have data
+    if (statusLabels.length > 0) {
+      // You can create a status distribution chart here if needed
+      console.log('📊 Status distribution:', counts.byStatus);
+    }
+  }
+
+  /**
+   * Start polling fallback when WebSocket is disconnected
+   */
+  private startPollingFallback(): void {
+    if (this.isPollingActive) {
+      console.log('⏭️ Polling already active, skipping');
+      return;
+    }
+
+    console.log('🔄 Starting polling fallback (WebSocket disconnected)');
+    this.isPollingActive = true;
+
+    // Poll immediately
+    this.loadMetrics();
+
+    // Setup interval for periodic polling
+    this.pollingInterval = setInterval(() => {
+      console.log('📊 Polling metrics (fallback mode)');
+      this.loadMetrics();
+    }, this.pollingIntervalMs);
+  }
+
+  /**
+   * Stop polling fallback when WebSocket reconnects
+   */
+  private stopPolling(): void {
+    if (!this.isPollingActive) {
+      return;
+    }
+
+    console.log('⏹️ Stopping polling fallback (WebSocket connected)');
+    
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = undefined;
+    }
+    
+    this.isPollingActive = false;
   }
 
   formatMinutes(minutes?: number): string {

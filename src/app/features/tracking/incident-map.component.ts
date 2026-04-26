@@ -1,9 +1,10 @@
-import { Component, Input, OnInit, OnDestroy, AfterViewInit, OnChanges, SimpleChanges, inject, signal } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, AfterViewInit, OnChanges, SimpleChanges, inject, signal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import * as L from 'leaflet';
 import { WebSocketService } from '../../core/services/websocket.service';
 import { TrackingService, LocationHistory } from '../../core/services/tracking.service';
-import { Subscription, interval } from 'rxjs';
+import { interval } from 'rxjs';
 
 interface Incident {
   id: number;
@@ -424,8 +425,55 @@ interface Workshop {
       color: #111;
     }
 
+    /* Estilos para controles de zoom en esquina inferior izquierda */
+    :host ::ng-deep .leaflet-bottom.leaflet-left {
+      bottom: 30px;
+      left: 30px;
+    }
+
+    :host ::ng-deep .leaflet-control-zoom {
+      border: none;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+    }
+
+    :host ::ng-deep .leaflet-control-zoom a {
+      width: 40px;
+      height: 40px;
+      line-height: 40px;
+      font-size: 20px;
+      color: #0a0a0a;
+      background: transparent;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    :host ::ng-deep .leaflet-control-zoom a:hover {
+      background: rgba(0, 0, 0, 0.05);
+      color: #3b82f6;
+    }
+
+    :host ::ng-deep .leaflet-control-zoom a:first-child {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
+      :host ::ng-deep .leaflet-bottom.leaflet-left {
+        bottom: 20px;
+        left: 20px;
+      }
+
+      :host ::ng-deep .leaflet-control-zoom a {
+        width: 36px;
+        height: 36px;
+        line-height: 36px;
+        font-size: 18px;
+      }
+
       .live-clock {
         top: 12px;
         padding: 12px 20px;
@@ -474,6 +522,7 @@ interface Workshop {
 export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, OnDestroy {
   private readonly wsService = inject(WebSocketService);
   private readonly trackingService = inject(TrackingService);
+  private readonly destroyRef = inject(DestroyRef);
 
   @Input() incident!: Incident;
   @Input() technician?: Technician;
@@ -486,8 +535,6 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
   private technicianMarker?: L.Marker;
   private workshopMarker?: L.Marker;
   private routeLine?: L.Polyline;
-  private wsSubscription?: Subscription;
-  private clockSubscription?: Subscription;
 
   estimatedDistance?: number;
   estimatedTime?: string;
@@ -500,20 +547,24 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
   ngOnInit(): void {
     // Inicializar reloj
     this.updateClock();
-    this.clockSubscription = interval(1000).subscribe(() => this.updateClock());
+    interval(1000)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.updateClock());
 
     // Conectar al WebSocket del incidente
     this.wsService.connect(this.incident.id);
 
     // Escuchar actualizaciones de ubicación
-    this.wsSubscription = this.wsService.messages$.subscribe(message => {
-      if (message.type === 'location_update') {
-        this.updateTechnicianLocation(
-          message.data.latitude,
-          message.data.longitude
-        );
-      }
-    });
+    this.wsService.messages$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(message => {
+        if (message.type === 'location_update') {
+          this.updateTechnicianLocation(
+            message.data.latitude,
+            message.data.longitude
+          );
+        }
+      });
   }
 
   ngAfterViewInit(): void {
@@ -548,8 +599,6 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
   }
 
   ngOnDestroy(): void {
-    this.wsSubscription?.unsubscribe();
-    this.clockSubscription?.unsubscribe();
     this.wsService.disconnect();
     this.map?.remove();
   }
@@ -573,11 +622,18 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
   }
 
   private initMap(): void {
-    // Inicializar mapa centrado en el incidente
-    this.map = L.map('map').setView(
+    // Inicializar mapa centrado en el incidente con controles de zoom en la esquina inferior izquierda
+    this.map = L.map('map', {
+      zoomControl: false // Desactivar el control por defecto
+    }).setView(
       [this.incident.latitude, this.incident.longitude],
       14
     );
+
+    // Agregar control de zoom en la esquina inferior izquierda
+    L.control.zoom({
+      position: 'bottomleft'
+    }).addTo(this.map);
 
     // Agregar capa de tiles de OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1114,16 +1170,18 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
       undefined,
       undefined,
       50
-    ).subscribe({
-      next: (history) => {
-        if (history.length > 0) {
-          this.drawRoute(history);
+    )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (history) => {
+          if (history.length > 0) {
+            this.drawRoute(history);
+          }
+        },
+        error: (error) => {
+          console.error('Error loading technician history:', error);
         }
-      },
-      error: (error) => {
-        console.error('Error loading technician history:', error);
-      }
-    });
+      });
   }
 
   private drawRoute(history: LocationHistory[]): void {

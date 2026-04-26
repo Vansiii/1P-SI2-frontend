@@ -1,0 +1,39 @@
+<!-- Incidents Grid Container -->
+<div class="incidents-grid-container">
+  @if (incidents().length > 0) {
+    @if (useVirtualScroll()) {
+      <!-- Virtual Scroll for large datasets (> 50 incidents) -->
+      <cdk-virtual-scroll-viewport 
+        [itemSize]="itemSize" 
+        [minBufferPx]="itemSize * bufferSize"
+        [maxBufferPx]="itemSize * bufferSize * 2"
+        class="virtual-scroll-viewport">
+        <div class="incidents-grid">
+          @for (incident of incidents(); track trackByIncidentId($index, incident)) {
+            <app-incident-card
+              [incident]="incident"
+              (cardClick)="onCardClick($event)"
+            />
+          }
+        </div>
+      </cdk-virtual-scroll-viewport>
+    } @else {
+      <!-- Regular grid for small datasets (<= 50 incidents) -->
+      <div class="incidents-grid">
+        @for (incident of incidents(); track trackByIncidentId($index, incident)) {
+          <app-incident-card
+            [incident]="incident"
+            (cardClick)="onCardClick($event)"
+          />
+        }
+      </div>
+    }
+  } @else {
+    <!-- Empty state -->
+    <app-empty-state
+      icon="📋"
+      title="No hay solicitudes"
+      message="No se encontraron solicitudes que coincidan con los filtros seleccionados."
+    />
+  }
+</div>

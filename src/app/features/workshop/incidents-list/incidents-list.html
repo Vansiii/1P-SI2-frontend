@@ -519,25 +519,51 @@
             <p class="empty-description">No se encontraron solicitudes con el filtro seleccionado</p>
           </div>
         } @else {
-          <div class="incidents-grid">
-            @for (incident of filteredIncidents(); track incident.id) {
-              <div class="incident-card" (click)="selectIncident(incident)" [class.timeout-warning]="isIncidentTimedOut(incident)">
+          <cdk-virtual-scroll-viewport [itemSize]="virtualScrollItemSize()" class="incidents-viewport">
+            @for (incident of filteredIncidents(); track trackByIncidentId($index, incident)) {
+              <div 
+                class="incident-card" 
+                [attr.data-status]="incident.estado_actual"
+                (click)="selectIncident(incident)" 
+                [class.timeout-warning]="isIncidentTimedOut(incident)" 
+                [class.no-assignment]="incident.estado_actual === 'pendiente' && !incident.suggested_technician">
+                
+                <!-- Header: ID + Badges -->
                 <div class="incident-header">
-                  <span class="incident-id">#{{ incident.id }}</span>
+                  <div class="header-left">
+                    <span class="incident-id">#{{ incident.id }}</span>
+                    <span class="status-dot" [class]="'status-' + getEstadoColor(incident.estado_actual)"></span>
+                  </div>
                   <div class="header-badges">
+                    <!-- Badge de estado siempre visible -->
+                    <span class="status-badge" [class]="'status-' + getEstadoColor(incident.estado_actual)">
+                      {{ getEstadoLabel(incident.estado_actual) }}
+                    </span>
+                    
+                    <!-- Badges especiales adicionales -->
                     @if (isIncidentTimedOut(incident)) {
                       <span class="timeout-badge" title="Tiempo de respuesta agotado">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <circle cx="12" cy="12" r="10"/>
                           <path d="M12 6v6l4 2"/>
                         </svg>
-                        Timeout
+                        TIMEOUT
+                      </span>
+                    } @else if (incident.estado_actual === 'pendiente' && !incident.suggested_technician) {
+                      <span class="no-assignment-badge" title="Sin asignación automática">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        SIN ASIGNAR
                       </span>
                     }
-                    <span class="status-dot" [class]="'status-' + getEstadoColor(incident.estado_actual)"></span>
                   </div>
                 </div>
-                <p class="incident-description">{{ truncate(incident.descripcion, 100) }}</p>
+
+                <!-- Description -->
+                <p class="incident-description">{{ truncate(incident.descripcion, 80) }}</p>
+
+                <!-- Meta: Prioridad + Categoría -->
                 <div class="incident-meta">
                   @if (incident.prioridad_ia) {
                     <span class="meta-badge priority-{{ getPrioridadColor(incident.prioridad_ia) }}">
@@ -550,21 +576,29 @@
                     </span>
                   }
                 </div>
+
+                <!-- Footer: Tiempo + Ubicación -->
                 <div class="incident-footer">
-                  <span class="incident-time">{{ formatDate(incident.created_at) }}</span>
+                  <span class="incident-time">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 6v6l4 2"/>
+                    </svg>
+                    {{ formatDate(incident.created_at) }}
+                  </span>
                   @if (incident.direccion_referencia) {
                     <span class="incident-location">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
                         <circle cx="12" cy="10" r="3"/>
                       </svg>
-                      {{ truncate(incident.direccion_referencia, 30) }}
+                      <span>{{ truncate(incident.direccion_referencia, 25) }}</span>
                     </span>
                   }
                 </div>
               </div>
             }
-          </div>
+          </cdk-virtual-scroll-viewport>
         }
       }
     </div>

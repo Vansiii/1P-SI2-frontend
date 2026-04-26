@@ -4,11 +4,14 @@ import { AuthService } from './core/services/auth.service';
 import { PushNotificationService } from './core/services/push-notification.service';
 import { PushTokenService } from './core/services/push-token.service';
 import { WebSocketService } from './core/services/websocket.service';
+import { RealtimeInitService } from './core/services/realtime-init.service';
+import { ToastContainerComponent } from './shared/components/toast-container/toast-container.component';
+import { ConnectionStatusComponent } from './shared/components/connection-status';
 import { filter } from 'rxjs';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, ToastContainerComponent, ConnectionStatusComponent],
   templateUrl: './app.html',
   styleUrl: './app.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -18,11 +21,10 @@ export class App implements OnInit {
   private readonly pushService = inject(PushNotificationService);
   private readonly pushTokenService = inject(PushTokenService);
   private readonly wsService = inject(WebSocketService);
+  private readonly realtimeInit = inject(RealtimeInitService);
   private readonly router = inject(Router);
 
   constructor() {
-    this.authService.restoreSession();
-    
     // Effect para reaccionar a cambios en el estado de autenticación
     effect(() => {
       const currentUser = this.authService.currentUser();
@@ -37,14 +39,31 @@ export class App implements OnInit {
         this.disconnectWebSocket();
       }
     });
+
+    // Effect para escuchar notificaciones recibidas
+    effect(() => {
+      const notification = this.pushService.latestNotification();
+      if (notification) {
+        console.log('🔔 Notification received:', notification);
+        
+        // Aquí puedes agregar lógica adicional como:
+        // - Actualizar contador de notificaciones
+        // - Mostrar toast/snackbar
+        // - Actualizar datos en tiempo real
+      }
+    });
   }
 
   async ngOnInit() {
+    // 🔐 Restore session FIRST
+    console.log('🚀 App ngOnInit - Restoring session...');
+    this.authService.restoreSession();
+    
+    // 🚀 Inicializar servicios en tiempo real
+    this.realtimeInit.initialize();
+    
     // Inicializar notificaciones push
     await this.initializePushNotifications();
-    
-    // Escuchar notificaciones recibidas
-    this.setupNotificationListener();
     
     // Escuchar mensajes del Service Worker
     this.setupServiceWorkerListener();
@@ -95,20 +114,6 @@ export class App implements OnInit {
     } catch (error) {
       console.error('❌ Error registering push token:', error);
     }
-  }
-
-  /**
-   * Escuchar notificaciones recibidas
-   */
-  private setupNotificationListener() {
-    this.pushService.notification$.subscribe(notification => {
-      console.log('🔔 Notification received:', notification);
-      
-      // Aquí puedes agregar lógica adicional como:
-      // - Actualizar contador de notificaciones
-      // - Mostrar toast/snackbar
-      // - Actualizar datos en tiempo real
-    });
   }
 
   /**

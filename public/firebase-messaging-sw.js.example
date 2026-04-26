@@ -29,8 +29,8 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || 'Nueva notificación';
   const notificationOptions = {
     body: payload.notification?.body || '',
-    icon: payload.notification?.image || '/assets/icons/icon-192x192.png',
-    badge: '/assets/icons/icon-72x72.png',
+    icon: payload.notification?.image || '/logo.png',
+    badge: '/logo.png',
     tag: 'mecanicoya-notification',
     requireInteraction: true,
     data: payload.data || {}

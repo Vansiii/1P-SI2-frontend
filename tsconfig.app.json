@@ -6,5 +6,10 @@
     "esModuleInterop": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.spec.ts"]
+  "exclude": [
+    "src/**/*.spec.ts",
+    "src/test-setup.ts",
+    "src/**/_old_implementation/**",
+    "src/**/_new_implementation/**"
+  ]
 }

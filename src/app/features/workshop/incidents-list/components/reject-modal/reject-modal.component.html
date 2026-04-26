@@ -1,0 +1,86 @@
+<!-- Modal Overlay -->
+<div class="modal-overlay" (click)="onCancel()">
+  <!-- Modal Panel -->
+  <div class="modal-panel" (click)="$event.stopPropagation()">
+    <!-- Header -->
+    <div class="modal-header">
+      <h2 id="reject-modal-title" class="modal-title">Rechazar Solicitud</h2>
+      <button class="close-button" (click)="onCancel()" aria-label="Cerrar modal">
+        ✕
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="modal-content">
+      <p class="modal-description">
+        Por favor, ingresa el motivo por el cual estás rechazando esta solicitud.
+        Esta información será registrada y enviada al cliente.
+      </p>
+
+      <!-- Textarea -->
+      <div class="form-group">
+        <label for="rejection-reason" class="form-label">
+          Motivo del rechazo
+        </label>
+        <textarea
+          id="rejection-reason"
+          class="form-textarea"
+          [class.error]="reasonError()"
+          [class.warning]="isCharacterCountWarning()"
+          rows="4"
+          placeholder="Ingresa el motivo del rechazo (mínimo 10 caracteres)"
+          [value]="reason()"
+          (input)="onReasonChange($any($event.target).value)"
+          maxlength="200"
+          aria-describedby="character-count rejection-error"
+          aria-required="true">
+        </textarea>
+
+        <!-- Character Count -->
+        <div 
+          id="character-count"
+          class="character-count" 
+          [class.warning]="isCharacterCountWarning()" 
+          [class.error]="isCharacterLimitExceeded()"
+          aria-live="polite">
+          {{ getCharacterCount() }}/200 caracteres
+        </div>
+
+        <!-- Error Message -->
+        @if (reasonError()) {
+          <div id="rejection-error" class="error-message" role="alert">
+            {{ reasonError() }}
+          </div>
+        }
+      </div>
+
+      <!-- Warning Message -->
+      <div class="warning-box">
+        <span class="warning-icon">⚠️</span>
+        <p class="warning-text">
+          Esta acción no se puede deshacer. El cliente será notificado del rechazo.
+        </p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="modal-footer">
+      <button 
+        class="modal-button cancel-button" 
+        (click)="onCancel()">
+        Cancelar
+      </button>
+      <button 
+        class="modal-button reject-button" 
+        (click)="confirmReject()"
+        [disabled]="!isValid() || loading()">
+        @if (loading()) {
+          <app-spinner size="small" />
+          <span>Procesando...</span>
+        } @else {
+          <span>Confirmar Rechazo</span>
+        }
+      </button>
+    </div>
+  </div>
+</div>

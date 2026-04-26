@@ -102,7 +102,7 @@ export class MetricsService {
   /**
    * Get response time time series
    */
-  getResponseTimeSeries(days: number = 30, workshopId?: number): Observable<{ data: TimeSeriesDataPoint[] }> {
+  getResponseTimeSeries(days = 30, workshopId?: number): Observable<{ data: TimeSeriesDataPoint[] }> {
     let params = `?days=${days}`;
     if (workshopId) params += `&workshop_id=${workshopId}`;
     return this.http.get<{ data: TimeSeriesDataPoint[] }>(`${this.timeSeriesUrl}/response-time${params}`);
@@ -111,7 +111,7 @@ export class MetricsService {
   /**
    * Get resolution time time series
    */
-  getResolutionTimeSeries(days: number = 30, workshopId?: number): Observable<{ data: TimeSeriesDataPoint[] }> {
+  getResolutionTimeSeries(days = 30, workshopId?: number): Observable<{ data: TimeSeriesDataPoint[] }> {
     let params = `?days=${days}`;
     if (workshopId) params += `&workshop_id=${workshopId}`;
     return this.http.get<{ data: TimeSeriesDataPoint[] }>(`${this.timeSeriesUrl}/resolution-time${params}`);
@@ -120,7 +120,7 @@ export class MetricsService {
   /**
    * Get incidents count time series
    */
-  getIncidentsCountSeries(days: number = 30, workshopId?: number, status?: string): Observable<{ data: TimeSeriesDataPoint[] }> {
+  getIncidentsCountSeries(days = 30, workshopId?: number, status?: string): Observable<{ data: TimeSeriesDataPoint[] }> {
     let params = `?days=${days}`;
     if (workshopId) params += `&workshop_id=${workshopId}`;
     if (status) params += `&status=${status}`;
@@ -130,7 +130,7 @@ export class MetricsService {
   /**
    * Get technician performance
    */
-  getTechnicianPerformance(workshopId: number, days: number = 30, limit: number = 10): Observable<{ data: TechnicianPerformance[] }> {
+  getTechnicianPerformance(workshopId: number, days = 30, limit = 10): Observable<{ data: TechnicianPerformance[] }> {
     return this.http.get<{ data: TechnicianPerformance[] }>(
       `${this.timeSeriesUrl}/technician-performance?workshop_id=${workshopId}&days=${days}&limit=${limit}`
     );
@@ -139,7 +139,7 @@ export class MetricsService {
   /**
    * Get hourly distribution
    */
-  getHourlyDistribution(days: number = 30, workshopId?: number): Observable<{ data: any[] }> {
+  getHourlyDistribution(days = 30, workshopId?: number): Observable<{ data: any[] }> {
     let params = `?days=${days}`;
     if (workshopId) params += `&workshop_id=${workshopId}`;
     return this.http.get<{ data: any[] }>(`${this.timeSeriesUrl}/hourly-distribution${params}`);

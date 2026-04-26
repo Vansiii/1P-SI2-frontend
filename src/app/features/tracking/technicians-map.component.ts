@@ -1,9 +1,10 @@
-import { Component, OnInit, OnDestroy, AfterViewInit, inject, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, inject, signal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import * as L from 'leaflet';
 import { WebSocketService } from '../../core/services/websocket.service';
-import { Subscription, interval } from 'rxjs';
+import { interval } from 'rxjs';
 
 interface Technician {
   id: number;
@@ -588,12 +589,11 @@ interface Incident {
 })
 export class TechniciansMapComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly wsService = inject(WebSocketService);
+  private readonly destroyRef = inject(DestroyRef);
 
   private map?: L.Map;
   private technicianMarkers = new Map<number, L.Marker>();
   private incidentMarkers = new Map<number, L.Marker>();
-  private wsSubscription?: Subscription;
-  private clockSubscription?: Subscription;
 
   technicians: Technician[] = [];
   incidents: Incident[] = [];
@@ -615,28 +615,32 @@ export class TechniciansMapComponent implements OnInit, AfterViewInit, OnDestroy
   ngOnInit(): void {
     // Inicializar reloj
     this.updateClock();
-    this.clockSubscription = interval(1000).subscribe(() => this.updateClock());
+    interval(1000)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.updateClock());
 
     // Conectar al WebSocket general
     this.wsService.connect();
 
     // Escuchar actualizaciones
-    this.wsSubscription = this.wsService.messages$.subscribe(message => {
-      switch (message.type) {
-        case 'location_update':
-          this.updateTechnicianLocation(message.data);
-          break;
-        case 'technician_status_change':
-          this.updateTechnicianStatus(message.data);
-          break;
-        case 'incident_created':
-          this.addIncident(message.data);
-          break;
-        case 'incident_status_change':
-          this.updateIncidentStatus(message.data);
-          break;
-      }
-    });
+    this.wsService.messages$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(message => {
+        switch (message.type) {
+          case 'location_update':
+            this.updateTechnicianLocation(message.data);
+            break;
+          case 'technician_status_change':
+            this.updateTechnicianStatus(message.data);
+            break;
+          case 'incident_created':
+            this.addIncident(message.data);
+            break;
+          case 'incident_status_change':
+            this.updateIncidentStatus(message.data);
+            break;
+        }
+      });
 
     // Cargar datos iniciales
     this.loadInitialData();
@@ -647,8 +651,6 @@ export class TechniciansMapComponent implements OnInit, AfterViewInit, OnDestroy
   }
 
   ngOnDestroy(): void {
-    this.wsSubscription?.unsubscribe();
-    this.clockSubscription?.unsubscribe();
     this.wsService.disconnect();
     this.map?.remove();
   }

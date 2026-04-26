@@ -1,0 +1,263 @@
+/* Incidents Grid Component Styles */
+
+.incidents-grid-container {
+  width: 100%;
+  /* No fixed height - let content determine height naturally */
+  overflow-y: visible; /* No scrolling by default */
+  overflow-x: hidden; /* Hide horizontal scrolling */
+}
+
+/* Webkit scrollbar styling (Chrome, Safari, Edge) */
+.incidents-grid-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.incidents-grid-container::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.incidents-grid-container::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.incidents-grid-container::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.incidents-grid-container::-webkit-scrollbar-thumb:active {
+  background: #6b7280;
+}
+
+/* Virtual Scroll Viewport */
+.virtual-scroll-viewport {
+  height: 600px; /* Fixed height only for virtual scroll (many items) */
+  width: 100%;
+  overflow-y: auto; /* Enable scrolling */
+  overflow-x: hidden;
+  
+  /* Custom scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #f3f4f6;
+}
+
+/* Webkit scrollbar for virtual scroll */
+.virtual-scroll-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.virtual-scroll-viewport::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.virtual-scroll-viewport::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.virtual-scroll-viewport::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.virtual-scroll-viewport::-webkit-scrollbar-thumb:active {
+  background: #6b7280;
+}
+
+/* Grid Layout */
+.incidents-grid {
+  display: grid;
+  gap: 20px;
+  width: 100%;
+  padding: 12px; /* Add padding for better spacing */
+  margin: 0;
+  box-sizing: border-box;
+}
+
+/* Responsive Grid Columns */
+
+/* Large screens: 3 columns (>= 1400px) */
+@media (min-width: 1400px) {
+  .incidents-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Medium screens: 2 columns (1024px - 1399px) */
+@media (min-width: 1024px) and (max-width: 1399px) {
+  .incidents-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Small screens: 1 column (< 1024px) */
+@media (max-width: 1023px) {
+  .incidents-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .incidents-grid {
+    gap: 16px;
+  }
+}
+
+/* Animation for grid items */
+.incidents-grid > * {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Ensure cards maintain aspect ratio */
+.incidents-grid > app-incident-card {
+  min-height: 200px;
+}
+
+/* ============================================================================
+   ENHANCED RESPONSIVE BREAKPOINTS
+   ============================================================================ */
+
+/* Extra large screens: 4 columns (>= 1600px) */
+@media (min-width: 1600px) {
+  .incidents-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+  }
+}
+
+/* Tablet landscape adjustments (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .incidents-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
+}
+
+/* Mobile landscape (480px - 767px) */
+@media (min-width: 480px) and (max-width: 767px) {
+  .incidents-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
+
+/* Small mobile (< 480px) */
+@media (max-width: 479px) {
+  .incidents-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+/* Print styles */
+@media print {
+  .incidents-grid-container {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  
+  .incidents-grid {
+    display: block;
+  }
+  
+  .incidents-grid > * {
+    page-break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+  
+  .virtual-scroll-viewport {
+    height: auto !important;
+    overflow: visible !important;
+  }
+}
+
+/* ============================================================================
+   SCROLLBAR ENHANCEMENTS
+   ============================================================================ */
+
+/* Smooth scrolling behavior for virtual scroll only */
+.virtual-scroll-viewport {
+  scroll-behavior: smooth;
+}
+
+/* Ensure grid items don't overlap with scrollbar in virtual scroll */
+.virtual-scroll-viewport .incidents-grid {
+  padding-right: 8px;
+}
+
+/* Loading state for grid container */
+.incidents-grid-container.loading {
+  overflow: hidden;
+}
+
+/* Empty state styling */
+.incidents-grid-container:empty::after {
+  content: 'No hay solicitudes para mostrar';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #9ca3af;
+  font-size: 16px;
+}
+
+/* Fade in animation for scroll container */
+@keyframes fadeInScroll {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.incidents-grid-container {
+  animation: fadeInScroll 0.4s ease-out;
+}
+
+/* Focus styles for accessibility */
+.virtual-scroll-viewport:focus {
+  outline: 2px solid #ea580c;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .incidents-grid-container::-webkit-scrollbar-track {
+    background: #ffffff;
+    border: 1px solid #000000;
+  }
+  
+  .incidents-grid-container::-webkit-scrollbar-thumb {
+    background: #000000;
+    border: 1px solid #000000;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .virtual-scroll-viewport {
+    scroll-behavior: auto;
+  }
+  
+  .incidents-grid-container {
+    animation: none;
+  }
+}

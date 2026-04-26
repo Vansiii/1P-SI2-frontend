@@ -1,0 +1,492 @@
+/* Incident Card Component Styles */
+
+:host {
+  display: block;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+:host:hover {
+  transform: translateY(-2px);
+}
+
+:host:focus {
+  outline: none; /* Remove default outline */
+}
+
+:host:focus-visible {
+  outline: 3px solid #ea580c; /* Orange 600 - WCAG compliant */
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.incident-card {
+  position: relative;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.2s ease;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.incident-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+}
+
+/* Timeout Badge */
+.timeout-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.timeout-icon {
+  font-size: 12px;
+}
+
+.timeout-text {
+  letter-spacing: 0.5px;
+}
+
+/* Card Header */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.incident-id {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.id-label {
+  color: #3b82f6;
+}
+
+.priority-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Card Body */
+.card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.description {
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.5;
+  margin: 0;
+  word-wrap: break-word;
+}
+
+.metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metadata-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.metadata-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.metadata-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Card Footer */
+.card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.time-remaining {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #dbeafe;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.time-icon {
+  font-size: 12px;
+}
+
+.time-text {
+  white-space: nowrap;
+}
+
+.no-assignment-badge {
+  padding: 4px 10px;
+  background: #fef3c7;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+/* Host state classes */
+:host(.has-timeout) .incident-card {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+:host(.high-priority) .incident-card {
+  border-left: 4px solid #ef4444;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .incident-card {
+    padding: 12px;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .timeout-badge {
+    top: 4px;
+    right: 4px;
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+}
+
+/* Focus Visible Styles for Interactive Elements */
+
+.priority-badge:focus-visible,
+.status-badge:focus-visible,
+.timeout-badge:focus-visible,
+.time-remaining:focus-visible,
+.no-assignment-badge:focus-visible {
+  outline: 3px solid #ea580c;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.metadata-icon:focus-visible {
+  outline: 2px solid #ea580c;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Enhanced focus for high contrast mode */
+@media (prefers-contrast: high) {
+  :host:focus-visible {
+    outline: 4px solid #000000;
+    outline-offset: 3px;
+  }
+  
+  .priority-badge:focus-visible,
+  .status-badge:focus-visible,
+  .timeout-badge:focus-visible {
+    outline: 3px solid #000000;
+    outline-offset: 2px;
+  }
+}
+
+/* Focus visible animation */
+@keyframes focusRing {
+  0% {
+    outline-offset: 2px;
+  }
+  50% {
+    outline-offset: 4px;
+  }
+  100% {
+    outline-offset: 2px;
+  }
+}
+
+:host:focus-visible {
+  animation: focusRing 0.6s ease-in-out;
+}
+
+/* ============================================================================
+   ENHANCED RESPONSIVE BREAKPOINTS
+   ============================================================================ */
+
+/* Tablet adjustments (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .incident-card {
+    padding: 14px;
+  }
+  
+  .card-header {
+    gap: 6px;
+  }
+  
+  .incident-id {
+    font-size: 15px;
+  }
+  
+  .priority-badge {
+    padding: 3px 10px;
+    font-size: 10px;
+  }
+  
+  .description {
+    font-size: 13px;
+  }
+  
+  .metadata-item {
+    font-size: 11px;
+  }
+}
+
+/* Mobile landscape (480px - 767px) */
+@media (min-width: 480px) and (max-width: 767px) {
+  .incident-card {
+    padding: 12px;
+    gap: 10px;
+  }
+  
+  .card-header {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .incident-id {
+    font-size: 14px;
+  }
+  
+  .priority-badge {
+    padding: 3px 8px;
+    font-size: 9px;
+  }
+  
+  .timeout-badge {
+    top: 6px;
+    right: 6px;
+    font-size: 9px;
+    padding: 3px 6px;
+  }
+  
+  .description {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  
+  .metadata {
+    gap: 4px;
+  }
+  
+  .metadata-item {
+    font-size: 11px;
+  }
+  
+  .card-footer {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  
+  .status-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+  
+  .time-remaining {
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+  
+  .no-assignment-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+}
+
+/* Small mobile (< 480px) */
+@media (max-width: 479px) {
+  :host {
+    font-size: 14px;
+  }
+  
+  .incident-card {
+    padding: 10px;
+    gap: 8px;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  
+  .incident-id {
+    font-size: 13px;
+  }
+  
+  .priority-badge {
+    padding: 2px 6px;
+    font-size: 9px;
+  }
+  
+  .timeout-badge {
+    top: 4px;
+    right: 4px;
+    font-size: 8px;
+    padding: 2px 5px;
+    gap: 2px;
+  }
+  
+  .timeout-icon {
+    font-size: 10px;
+  }
+  
+  .description {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  
+  .metadata {
+    gap: 3px;
+  }
+  
+  .metadata-item {
+    font-size: 10px;
+  }
+  
+  .metadata-icon {
+    font-size: 12px;
+  }
+  
+  .card-footer {
+    gap: 4px;
+    padding-top: 6px;
+  }
+  
+  .status-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+  
+  .time-remaining {
+    font-size: 9px;
+    padding: 2px 5px;
+  }
+  
+  .time-icon {
+    font-size: 10px;
+  }
+  
+  .no-assignment-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  :host {
+    cursor: default;
+  }
+  
+  .incident-card {
+    padding: 14px;
+  }
+  
+  /* Larger touch targets */
+  .priority-badge,
+  .status-badge,
+  .timeout-badge {
+    min-height: 28px;
+    padding: 6px 10px;
+  }
+}
+
+/* Print styles */
+@media print {
+  :host {
+    page-break-inside: avoid;
+  }
+  
+  .incident-card {
+    border: 2px solid #000;
+    box-shadow: none;
+  }
+  
+  .timeout-badge {
+    border: 1px solid #000;
+  }
+  
+  :host:hover {
+    transform: none;
+  }
+  
+  .incident-card:hover {
+    box-shadow: none;
+    border-color: #e5e7eb;
+  }
+}
