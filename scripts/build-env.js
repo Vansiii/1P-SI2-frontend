@@ -57,6 +57,10 @@ console.log(`API URL: ${config.apiBaseUrl}`);
 console.log(`Firebase Project: ${config.firebaseProjectId || 'No configurado'}`);
 console.log(`Production: ${isProduction}`);
 
+// Keep websocket base aligned with API base path (including /api/v1 when present)
+const normalizedApiBaseUrl = config.apiBaseUrl.replace(/\/+$/, '');
+const wsBaseUrl = normalizedApiBaseUrl.replace(/^http/i, 'ws');
+
 // Generar el contenido del archivo environment.ts
 const environmentContent = `// Este archivo es generado automáticamente por scripts/build-env.js
 // NO EDITAR MANUALMENTE - Los cambios se perderán
@@ -67,7 +71,7 @@ export const environment: Environment = {
   production: ${!!isProduction},
   apiBaseUrl: '${config.apiBaseUrl}',
   apiUrl: '${config.apiBaseUrl}',
-  wsUrl: '${config.apiBaseUrl.replace('/api/v1', '').replace('http', 'ws')}',
+  wsUrl: '${wsBaseUrl}',
   enableLogging: ${!isProduction},
   enableDebugMode: ${!isProduction},
   appName: 'MecánicoYa',
