@@ -207,6 +207,15 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   }
 
   constructor() {
+    // ✅ Effect para conectar WebSocket cuando el usuario esté autenticado
+    effect(() => {
+      const user = this.authService.currentUser();
+      if (user && !this.wsService.isConnected()) {
+        console.log('✅ User authenticated, connecting WebSocket...');
+        this.connectWebSocket();
+      }
+    });
+    
     // ✅ Effect para aplicar filtro automáticamente cuando cambie
     effect(() => {
       const filtered = this.filteredIncidents();
@@ -345,7 +354,6 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     this.loadStatusCounts();
     this.loadIncidents();
     this.loadLeaflet();
-    this.connectWebSocket(); // ✅ Conectar WebSocket
     this.startTimeoutChecker(); // ✅ Iniciar verificador de timeouts
     
     // Detectar si hay un incidentId en los query params
