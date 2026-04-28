@@ -7,6 +7,9 @@ const customPlugin = require('./.eslint/index');
 
 module.exports = defineConfig([
   {
+    ignores: ['src/environments/**', 'dist/**', '.angular/**', 'node_modules/**'],
+  },
+  {
     files: ['**/*.ts'],
     extends: [
       eslint.configs.recommended,

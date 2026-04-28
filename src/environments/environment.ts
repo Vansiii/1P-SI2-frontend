@@ -26,5 +26,5 @@ export const environment: Environment = {
   },
   
   // VAPID Key para Web Push
-  firebaseVapidKey: 'BCmIchV8ZGAXni86XQC84IXomvcdcUASOxPLtnHDQ1BDxFcD-qIYiXP3MwKGpjJW2rtNisJPqnTOMs6ZmRnjVJY'
+  firebaseVapidKey: 'undefined'
 };

@@ -1,381 +1,450 @@
-import { Component, ChangeDetectionStrategy, inject, signal, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, OnInit, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PaymentService, WalletInfo, FinancialMovement, Withdrawal } from '../../../core/services/payment.service';
 
 @Component({
   selector: 'app-workshop-wallet',
+  standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="wallet-page">
-      <header class="page-header">
-        <h1>Mi Billetera</h1>
-        <p class="subtitle">Gestión financiera de tu taller</p>
+    <div class="wallet-container">
+      <header class="wallet-header">
+        <div class="header-content">
+          <h1>Mi Billetera</h1>
+          <p class="subtitle">Gestiona tus ingresos y solicitudes de retiro de forma segura.</p>
+        </div>
       </header>
 
-      <!-- Wallet cards -->
-      @if (wallet()) {
-        <div class="wallet-grid">
-          <div class="wallet-card available">
-            <div class="card-icon">💰</div>
-            <div class="card-label">Disponible</div>
-            <div class="card-amount">Bs. {{ wallet()!.available_balance.toFixed(2) }}</div>
+      <!-- Main Balance Grid -->
+      @if (wallet(); as w) {
+        <div class="balance-grid">
+          <div class="balance-card primary">
+            <div class="card-glow"></div>
+            <div class="card-header">
+              <span class="label">Saldo Disponible</span>
+              <div class="icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              </div>
+            </div>
+            <div class="amount-display">
+              <span class="currency">Bs.</span>
+              <span class="value">{{ w.available_balance | number:'1.2-2' }}</span>
+            </div>
+            <button class="action-btn" (click)="showWithdrawalForm.set(true)" [disabled]="w.available_balance <= 0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+              Solicitar Retiro
+            </button>
           </div>
-          <div class="wallet-card pending">
-            <div class="card-icon">⏳</div>
-            <div class="card-label">En retiro</div>
-            <div class="card-amount">Bs. {{ wallet()!.pending_balance.toFixed(2) }}</div>
-          </div>
-          <div class="wallet-card earned">
-            <div class="card-icon">📈</div>
-            <div class="card-label">Total ganado</div>
-            <div class="card-amount">Bs. {{ wallet()!.total_earned.toFixed(2) }}</div>
-          </div>
-          <div class="wallet-card withdrawn">
-            <div class="card-icon">🏦</div>
-            <div class="card-label">Total retirado</div>
-            <div class="card-amount">Bs. {{ wallet()!.total_withdrawn.toFixed(2) }}</div>
-          </div>
-        </div>
 
-        <!-- Withdrawal button -->
-        <div class="withdrawal-section">
-          <button class="btn-withdrawal" (click)="showWithdrawalForm.set(true)" [disabled]="wallet()!.available_balance <= 0">
-            💸 Solicitar Retiro
-          </button>
+          <div class="stats-cards">
+            <div class="stat-item">
+              <div class="stat-icon pending">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">En retiro</span>
+                <span class="stat-value">Bs. {{ w.pending_balance | number:'1.2-2' }}</span>
+              </div>
+            </div>
+
+            <div class="stat-item">
+              <div class="stat-icon earned">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Total ganado</span>
+                <span class="stat-value">Bs. {{ w.total_earned | number:'1.2-2' }}</span>
+              </div>
+            </div>
+
+            <div class="stat-item">
+              <div class="stat-icon withdrawn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M3 7h18"/><path d="M5 21V7"/><path d="M19 21V7"/><path d="M9 7v14"/><path d="M15 7v14"/><path d="M2 7l10-4 10 4"/></svg>
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Total retirado</span>
+                <span class="stat-value">Bs. {{ w.total_withdrawn | number:'1.2-2' }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       }
 
-      <!-- Withdrawal form -->
+      <!-- Tabs Navigation -->
+      <nav class="wallet-tabs" role="tablist">
+        <button role="tab" [attr.aria-selected]="activeTab() === 'history'" [class.active]="activeTab() === 'history'" (click)="activeTab.set('history'); loadHistory()">
+          Historial de Movimientos
+        </button>
+        <button role="tab" [attr.aria-selected]="activeTab() === 'withdrawals'" [class.active]="activeTab() === 'withdrawals'" (click)="activeTab.set('withdrawals'); loadWithdrawals()">
+          Mis Solicitudes
+        </button>
+      </nav>
+
+      <!-- Content Area -->
+      <main class="tab-content">
+        @if (isLoading()) {
+          <div class="loader-overlay">
+            <div class="elegant-spinner"></div>
+            <p>Sincronizando datos...</p>
+          </div>
+        } @else {
+          <!-- History Tab -->
+          @if (activeTab() === 'history') {
+            @if (movements().length > 0) {
+              <div class="list-wrapper">
+                @for (m of movements(); track m.id) {
+                  <div class="movement-row" [class.income]="m.amount > 0">
+                    <div class="movement-main">
+                      <div class="type-indicator"></div>
+                      <div class="details">
+                        <span class="title">{{ getMovementLabel(m.movement_type) }}</span>
+                        <span class="desc">{{ m.description }}</span>
+                      </div>
+                    </div>
+                    <div class="movement-meta">
+                      <span class="date">{{ formatDate(m.created_at) }}</span>
+                      <span class="amount" [class.positive]="m.amount > 0">
+                        {{ m.amount > 0 ? '+' : '' }}Bs. {{ m.amount | number:'1.2-2' }}
+                      </span>
+                    </div>
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="empty-state">
+                <div class="empty-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </div>
+                <h3>Sin actividad reciente</h3>
+                <p>Tus transacciones aparecerán aquí una vez que completes servicios.</p>
+              </div>
+            }
+          }
+
+          <!-- Withdrawals Tab -->
+          @if (activeTab() === 'withdrawals') {
+            @if (withdrawals().length > 0) {
+              <div class="list-wrapper">
+                @for (w of withdrawals(); track w.id) {
+                  <div class="withdrawal-row">
+                    <div class="withdrawal-info">
+                      <span class="amount">Bs. {{ w.amount | number:'1.2-2' }}</span>
+                      <span class="bank-details">{{ w.bank_name }} · {{ w.account_number }}</span>
+                      <span class="date">{{ formatDate(w.requested_at) }}</span>
+                    </div>
+                    <div class="withdrawal-status">
+                      <span class="status-pill" [class]="'pill-' + w.status">
+                        {{ getStatusLabel(w.status) }}
+                      </span>
+                    </div>
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="empty-state">
+                <div class="empty-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <h3>Sin retiros</h3>
+                <p>Aún no has solicitado transferencias a tu cuenta bancaria.</p>
+              </div>
+            }
+          }
+        }
+      </main>
+
+      <!-- Withdrawal Modal -->
       @if (showWithdrawalForm()) {
-        <div class="modal-overlay" (click)="showWithdrawalForm.set(false)">
-          <div class="modal-content" (click)="$event.stopPropagation()">
-            <h3>Solicitar Retiro</h3>
-            <p class="available-info">Disponible: Bs. {{ wallet()?.available_balance?.toFixed(2) || '0.00' }}</p>
-
-            <div class="form-group">
-              <label for="amount">Monto a retirar</label>
-              <input id="amount" type="number" [(ngModel)]="withdrawalAmount" min="100" [max]="wallet()?.available_balance || 0" step="0.01" />
+        <div class="modal-backdrop" role="button" tabindex="0" (click)="showWithdrawalForm.set(false)" (keydown.escape)="showWithdrawalForm.set(false)">
+          <div class="modal-card" role="dialog" aria-labelledby="modal-title" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()" tabindex="-1">
+            <div class="modal-header">
+              <h3 id="modal-title">Solicitar Retiro</h3>
+              <p>El proceso de transferencia puede demorar de 24 a 48 horas hábiles.</p>
             </div>
-            <div class="form-group">
-              <label for="bank">Banco</label>
-              <input id="bank" type="text" [(ngModel)]="bankName" placeholder="Nombre del banco" />
-            </div>
-            <div class="form-group">
-              <label for="account">Número de cuenta</label>
-              <input id="account" type="text" [(ngModel)]="accountNumber" placeholder="Número de cuenta" />
-            </div>
-            <div class="form-group">
-              <label for="holder">Titular</label>
-              <input id="holder" type="text" [(ngModel)]="accountHolder" placeholder="Nombre del titular" />
-            </div>
-            <div class="form-group">
-              <label for="notes">Notas (opcional)</label>
-              <textarea id="notes" [(ngModel)]="withdrawalNotes" rows="2"></textarea>
+            
+            <div class="available-badge">
+              <span>Disponible: Bs. {{ wallet()?.available_balance | number:'1.2-2' }}</span>
             </div>
 
-            <div class="modal-actions">
-              <button class="btn-cancel" (click)="showWithdrawalForm.set(false)">Cancelar</button>
-              <button class="btn-confirm" (click)="submitWithdrawal()" [disabled]="isSubmitting()">
-                {{ isSubmitting() ? 'Enviando...' : 'Solicitar' }}
-              </button>
-            </div>
+            <form class="modal-form" (submit)="$event.preventDefault(); submitWithdrawal()">
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="withdrawal-amount">Monto a retirar</label>
+                  <div class="input-prefix">
+                    <span>Bs.</span>
+                    <input id="withdrawal-amount" type="number" [(ngModel)]="withdrawalAmount" name="amount" min="100" [max]="wallet()?.available_balance || 0" step="0.01" required />
+                  </div>
+                </div>
+
+                <div class="form-field">
+                  <label for="bank-name">Banco</label>
+                  <input id="bank-name" type="text" [(ngModel)]="bankName" name="bank" placeholder="Ej. Banco Unión" required />
+                </div>
+
+                <div class="form-field">
+                  <label for="account-number">Número de Cuenta</label>
+                  <input id="account-number" type="text" [(ngModel)]="accountNumber" name="account" placeholder="Nº de cuenta o CUIT" required />
+                </div>
+
+                <div class="form-field">
+                  <label for="account-holder">Titular de la Cuenta</label>
+                  <input id="account-holder" type="text" [(ngModel)]="accountHolder" name="holder" placeholder="Nombre completo" required />
+                </div>
+
+                <div class="form-field full">
+                  <label for="withdrawal-notes">Notas adicionales</label>
+                  <textarea id="withdrawal-notes" [(ngModel)]="withdrawalNotes" name="notes" rows="2" placeholder="Opcional..."></textarea>
+                </div>
+              </div>
+
+              <div class="modal-actions">
+                <button type="button" class="btn-ghost" (click)="showWithdrawalForm.set(false)">Cancelar</button>
+                <button type="submit" class="btn-submit" [disabled]="isSubmitting() || withdrawalAmount < 100">
+                  {{ isSubmitting() ? 'Procesando...' : 'Confirmar Solicitud' }}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      }
-
-      <!-- Tabs -->
-      <div class="tabs">
-        <button [class.active]="activeTab() === 'history'" (click)="activeTab.set('history'); loadHistory()">
-          Historial Financiero
-        </button>
-        <button [class.active]="activeTab() === 'withdrawals'" (click)="activeTab.set('withdrawals'); loadWithdrawals()">
-          Mis Retiros
-        </button>
-      </div>
-
-      <!-- Financial history tab -->
-      @if (activeTab() === 'history') {
-        @if (isLoading()) {
-          <div class="loading"><div class="spinner"></div></div>
-        } @else if (movements().length > 0) {
-          <div class="movements-list">
-            @for (m of movements(); track m.id) {
-              <div class="movement-item" [class]="m.amount > 0 ? 'income' : 'expense'">
-                <div class="movement-info">
-                  <div class="movement-type">{{ getMovementLabel(m.movement_type) }}</div>
-                  <div class="movement-desc">{{ m.description }}</div>
-                  <div class="movement-date">{{ formatDate(m.created_at) }}</div>
-                </div>
-                <div class="movement-amount" [class.positive]="m.amount > 0" [class.negative]="m.amount < 0">
-                  {{ m.amount > 0 ? '+' : '' }}Bs. {{ m.amount.toFixed(2) }}
-                </div>
-              </div>
-            }
-          </div>
-        } @else {
-          <div class="empty-state">
-            <p>No hay movimientos financieros aún</p>
-          </div>
-        }
-      }
-
-      <!-- Withdrawals tab -->
-      @if (activeTab() === 'withdrawals') {
-        @if (isLoading()) {
-          <div class="loading"><div class="spinner"></div></div>
-        } @else if (withdrawals().length > 0) {
-          <div class="withdrawals-list">
-            @for (w of withdrawals(); track w.id) {
-              <div class="withdrawal-item">
-                <div class="withdrawal-info">
-                  <div class="withdrawal-amount-label">Bs. {{ w.amount.toFixed(2) }}</div>
-                  <div class="withdrawal-bank">{{ w.bank_name || 'Sin banco' }} · {{ w.account_number || '' }}</div>
-                  <div class="withdrawal-date">{{ formatDate(w.requested_at) }}</div>
-                </div>
-                <span [class]="'badge badge-' + w.status">{{ getStatusLabel(w.status) }}</span>
-              </div>
-            }
-          </div>
-        } @else {
-          <div class="empty-state">
-            <p>No tienes solicitudes de retiro</p>
-          </div>
-        }
       }
     </div>
   `,
   styles: `
-    :host { display: block; }
-
-    .wallet-page {
-      padding: 24px;
-      max-width: 900px;
+    .wallet-container {
+      max-width: 1000px;
       margin: 0 auto;
+      padding: 2rem;
+      animation: fadeIn 0.4s ease-out;
     }
 
-    .page-header h1 { margin: 0 0 4px; font-size: 1.75rem; color: #1a1a2e; }
-    .subtitle { color: #6b7280; margin: 0 0 24px; }
+    .wallet-header { margin-bottom: 2.5rem; }
+    .wallet-header h1 { font-size: 2.25rem; font-weight: 700; color: var(--text-main); margin: 0; letter-spacing: -0.025em; }
+    .subtitle { color: var(--text-muted); margin-top: 0.5rem; font-size: 1.1rem; }
 
-    .wallet-grid {
+    /* Balance Grid Layout */
+    .balance-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-      margin-bottom: 24px;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 3rem;
     }
 
-    .wallet-card {
-      padding: 20px;
-      border-radius: 14px;
-      text-align: center;
-      border: 1px solid #e5e7eb;
-    }
-
-    .wallet-card.available { background: linear-gradient(135deg, #ecfdf5, #d1fae5); border-color: #86efac; }
-    .wallet-card.pending { background: linear-gradient(135deg, #fffbeb, #fef3c7); border-color: #fcd34d; }
-    .wallet-card.earned { background: linear-gradient(135deg, #eff6ff, #dbeafe); border-color: #93c5fd; }
-    .wallet-card.withdrawn { background: linear-gradient(135deg, #faf5ff, #ede9fe); border-color: #c4b5fd; }
-
-    .card-icon { font-size: 1.5rem; margin-bottom: 4px; }
-    .card-label { font-size: 0.8rem; color: #6b7280; }
-    .card-amount { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
-
-    .withdrawal-section { text-align: center; margin-bottom: 24px; }
-
-    .btn-withdrawal {
-      padding: 12px 32px;
-      border: none;
-      border-radius: 12px;
-      background: linear-gradient(135deg, #3b82f6, #2563eb);
+    /* Main Featured Card */
+    .balance-card.primary {
+      position: relative;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border-radius: 24px;
+      padding: 2.5rem;
       color: white;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: transform 0.2s;
-    }
-
-    .btn-withdrawal:hover:not(:disabled) { transform: translateY(-1px); }
-    .btn-withdrawal:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    .tabs {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 16px;
-      border-bottom: 2px solid #e5e7eb;
-    }
-
-    .tabs button {
-      padding: 10px 20px;
-      border: none;
-      background: transparent;
-      cursor: pointer;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: #6b7280;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -2px;
-      transition: all 0.2s;
-    }
-
-    .tabs button.active {
-      color: #3b82f6;
-      border-bottom-color: #3b82f6;
-    }
-
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 48px;
-    }
-
-    .spinner {
-      width: 32px;
-      height: 32px;
-      border: 3px solid #e5e7eb;
-      border-top-color: #3b82f6;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .movements-list, .withdrawals-list {
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      gap: 8px;
-    }
-
-    .movement-item {
-      display: flex;
       justify-content: space-between;
-      align-items: center;
-      padding: 14px 16px;
-      border-radius: 10px;
-      background: white;
-      border: 1px solid #f3f4f6;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     }
 
-    .movement-type { font-weight: 600; font-size: 0.875rem; }
-    .movement-desc { font-size: 0.8rem; color: #6b7280; margin-top: 2px; }
-    .movement-date { font-size: 0.75rem; color: #9ca3af; margin-top: 2px; }
-
-    .movement-amount {
-      font-weight: 700;
-      font-size: 1rem;
-      font-family: 'Roboto Mono', monospace;
+    .card-glow {
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(249, 115, 22, 0.2) 0%, transparent 70%);
+      filter: blur(40px);
     }
 
-    .movement-amount.positive { color: #16a34a; }
-    .movement-amount.negative { color: #dc2626; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .card-header .label { font-size: 1rem; opacity: 0.8; font-weight: 500; }
+    .icon-box { background: rgba(255, 255, 255, 0.1); padding: 10px; border-radius: 12px; }
+    .icon-box svg { width: 24px; height: 24px; color: var(--primary); }
 
-    .withdrawal-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 14px 16px;
-      border-radius: 10px;
-      background: white;
-      border: 1px solid #f3f4f6;
-    }
+    .amount-display { margin: 1.5rem 0 2.5rem; }
+    .amount-display .currency { font-size: 1.5rem; font-weight: 500; color: var(--primary); margin-right: 8px; }
+    .amount-display .value { font-size: 3.5rem; font-weight: 700; font-family: var(--font-display); }
 
-    .withdrawal-amount-label { font-weight: 700; font-size: 1rem; }
-    .withdrawal-bank { font-size: 0.8rem; color: #6b7280; margin-top: 2px; }
-    .withdrawal-date { font-size: 0.75rem; color: #9ca3af; margin-top: 2px; }
-
-    .badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 9999px;
-      font-size: 0.7rem;
+    .action-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 1rem 1.5rem;
+      border-radius: 14px;
       font-weight: 600;
-    }
-
-    .badge-pending { background: #fef3c7; color: #92400e; }
-    .badge-approved { background: #dbeafe; color: #1e40af; }
-    .badge-rejected { background: #fecaca; color: #991b1b; }
-    .badge-paid { background: #bbf7d0; color: #166534; }
-
-    .empty-state {
-      text-align: center;
-      padding: 48px;
-      color: #9ca3af;
-    }
-
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.4);
+      font-size: 1rem;
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
-    }
-
-    .modal-content {
-      background: white;
-      border-radius: 16px;
-      padding: 24px;
-      width: 420px;
-      max-width: 90vw;
-    }
-
-    .modal-content h3 { margin: 0 0 8px; }
-    .available-info { color: #16a34a; font-weight: 600; margin: 0 0 16px; }
-
-    .form-group {
-      margin-bottom: 12px;
-    }
-
-    .form-group label {
-      display: block;
-      font-size: 0.8rem;
-      font-weight: 500;
-      margin-bottom: 4px;
-      color: #374151;
-    }
-
-    .form-group input, .form-group textarea {
+      gap: 10px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      font-family: inherit;
-      font-size: 0.875rem;
-      box-sizing: border-box;
     }
 
-    .modal-actions {
+    .action-btn:hover:not(:disabled) { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(249, 115, 22, 0.4); }
+    .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .action-btn svg { width: 18px; height: 18px; }
+
+    /* Sidebar Stats */
+    .stats-cards { display: flex; flex-direction: column; gap: 1rem; }
+    .stat-item {
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      padding: 1.25rem;
+      border-radius: 18px;
       display: flex;
-      gap: 12px;
-      justify-content: flex-end;
-      margin-top: 16px;
+      align-items: center;
+      gap: 1.25rem;
+      transition: all 0.2s;
     }
+    .stat-item:hover { border-color: var(--primary-subtle); transform: translateX(4px); }
 
-    .btn-cancel {
-      padding: 8px 16px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      background: white;
-      cursor: pointer;
-    }
+    .stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+    .stat-icon svg { width: 24px; height: 24px; }
+    
+    .stat-icon.pending { background: #fff7ed; color: #ea580c; }
+    .stat-icon.earned { background: #f0fdf4; color: #16a34a; }
+    .stat-icon.withdrawn { background: #eff6ff; color: #2563eb; }
 
-    .btn-confirm {
-      padding: 8px 16px;
+    .stat-label { display: block; font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
+    .stat-value { display: block; font-size: 1.25rem; font-weight: 700; color: var(--text-main); margin-top: 2px; }
+
+    /* Tabs Navigation */
+    .wallet-tabs { display: flex; gap: 1rem; border-bottom: 2px solid var(--border-light); margin-bottom: 1.5rem; }
+    .wallet-tabs button {
+      padding: 1rem 0.5rem;
+      background: none;
       border: none;
-      border-radius: 8px;
-      background: #3b82f6;
-      color: white;
-      cursor: pointer;
+      border-bottom: 3px solid transparent;
       font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: -2px;
+    }
+    .wallet-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .wallet-tabs button:hover:not(.active) { color: var(--text-main); }
+
+    /* Lists and Rows */
+    .list-wrapper { display: flex; flex-direction: column; gap: 0.75rem; }
+    
+    .movement-row {
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
-    .btn-confirm:hover { background: #2563eb; }
-    .btn-confirm:disabled { opacity: 0.5; }
+    .movement-main { display: flex; align-items: center; gap: 1rem; }
+    .type-indicator { width: 4px; height: 40px; border-radius: 2px; background: #94a3b8; }
+    .income .type-indicator { background: var(--success); }
+    
+    .details { display: flex; flex-direction: column; }
+    .details .title { font-weight: 600; color: var(--text-main); }
+    .details .desc { font-size: 0.85rem; color: var(--text-muted); }
+
+    .movement-meta { text-align: right; }
+    .movement-meta .date { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+    .movement-meta .amount { font-weight: 700; font-size: 1.1rem; }
+    .amount.positive { color: var(--success); }
+
+    .withdrawal-row {
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      border-radius: 14px;
+      padding: 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .withdrawal-info .amount { display: block; font-size: 1.25rem; font-weight: 700; }
+    .withdrawal-info .bank-details { display: block; font-size: 0.85rem; color: var(--text-muted); margin: 4px 0; }
+    .withdrawal-info .date { font-size: 0.75rem; color: #94a3b8; }
+
+    .status-pill {
+      padding: 6px 14px;
+      border-radius: 99px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.025em;
+    }
+    .pill-pending { background: #fef3c7; color: #92400e; }
+    .pill-approved { background: #dcfce7; color: #166534; }
+    .pill-paid { background: #dbeafe; color: #1e40af; }
+    .pill-rejected { background: #fee2e2; color: #991b1b; }
+
+    /* Modals */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .modal-card {
+      background: var(--surface);
+      width: 100%;
+      max-width: 520px;
+      border-radius: 24px;
+      padding: 2.5rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .modal-header h3 { font-size: 1.5rem; margin: 0; }
+    .modal-header p { color: var(--text-muted); font-size: 0.9rem; margin: 8px 0 24px; }
+
+    .available-badge { background: var(--primary-subtle); color: var(--primary-hover); padding: 12px; border-radius: 12px; text-align: center; font-weight: 700; margin-bottom: 2rem; }
+
+    .form-grid { display: grid; gap: 1.25rem; }
+    .form-field label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: var(--text-main); }
+    .input-prefix { display: flex; align-items: center; background: #f8fafc; border: 1px solid var(--border-light); border-radius: 10px; overflow: hidden; }
+    .input-prefix span { padding: 0 1rem; font-weight: 700; color: var(--text-muted); }
+    .input-prefix input { border: none; background: none; padding: 12px 0; width: 100%; }
+    
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      background: #f8fafc;
+    }
+    .form-field.full { grid-column: 1 / -1; }
+
+    .modal-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2.5rem; }
+    .btn-ghost { background: none; border: none; font-weight: 600; cursor: pointer; color: var(--text-muted); }
+    .btn-submit { background: var(--primary); color: white; border: none; padding: 10px 24px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    .btn-submit:hover:not(:disabled) { transform: scale(1.02); }
+
+    .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text-muted); }
+    .empty-icon svg { width: 64px; height: 64px; margin-bottom: 1.5rem; stroke: var(--border-light); }
+    
+    .elegant-spinner { width: 40px; height: 40px; border: 3px solid var(--border-light); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
+    
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes modalSlideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    @media (max-width: 768px) {
+      .balance-grid { grid-template-columns: 1fr; }
+      .wallet-container { padding: 1rem; }
+      .amount-display .value { font-size: 2.5rem; }
+    }
   `
 })
 export class WorkshopWalletComponent implements OnInit {
-  private paymentService = inject(PaymentService);
+  private readonly paymentService = inject(PaymentService);
+  private readonly destroyRef = inject(DestroyRef);
 
   wallet = signal<WalletInfo | null>(null);
   movements = signal<FinancialMovement[]>([]);
@@ -398,32 +467,44 @@ export class WorkshopWalletComponent implements OnInit {
   }
 
   loadWallet() {
-    this.paymentService.getMyWallet().subscribe({
-      next: (data) => this.wallet.set(data),
-      error: () => {}
-    });
+    this.paymentService.getMyWallet()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (data) => this.wallet.set(data),
+        error: (err) => console.error('Error loading wallet:', err)
+      });
   }
 
   loadHistory() {
     this.isLoading.set(true);
-    this.paymentService.getMyFinancialHistory().subscribe({
-      next: (data) => {
-        this.movements.set(data.movements);
-        this.isLoading.set(false);
-      },
-      error: () => this.isLoading.set(false)
-    });
+    this.paymentService.getMyFinancialHistory()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (data) => {
+          this.movements.set(data.movements);
+          this.isLoading.set(false);
+        },
+        error: (err) => {
+          console.error('Error loading history:', err);
+          this.isLoading.set(false);
+        }
+      });
   }
 
   loadWithdrawals() {
     this.isLoading.set(true);
-    this.paymentService.getMyWithdrawals().subscribe({
-      next: (data) => {
-        this.withdrawals.set(data.withdrawals);
-        this.isLoading.set(false);
-      },
-      error: () => this.isLoading.set(false)
-    });
+    this.paymentService.getMyWithdrawals()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (data) => {
+          this.withdrawals.set(data.withdrawals);
+          this.isLoading.set(false);
+        },
+        error: (err) => {
+          console.error('Error loading withdrawals:', err);
+          this.isLoading.set(false);
+        }
+      });
   }
 
   submitWithdrawal() {
@@ -436,7 +517,9 @@ export class WorkshopWalletComponent implements OnInit {
       this.accountNumber || undefined,
       this.accountHolder || undefined,
       this.withdrawalNotes || undefined
-    ).subscribe({
+    )
+    .pipe(takeUntilDestroyed(this.destroyRef))
+    .subscribe({
       next: () => {
         this.isSubmitting.set(false);
         this.showWithdrawalForm.set(false);
@@ -449,7 +532,7 @@ export class WorkshopWalletComponent implements OnInit {
         this.accountHolder = '';
         this.withdrawalNotes = '';
       },
-      error: (err: any) => {
+      error: (err: { error?: { detail?: string } }) => {
         this.isSubmitting.set(false);
         alert(err?.error?.detail || 'Error al solicitar retiro');
       }
@@ -458,11 +541,11 @@ export class WorkshopWalletComponent implements OnInit {
 
   getMovementLabel(type: string): string {
     const labels: Record<string, string> = {
-      payment_received: 'Pago recibido',
-      withdrawal_requested: 'Retiro solicitado',
-      withdrawal_completed: 'Retiro completado',
-      withdrawal_reversed: 'Retiro revertido',
-      refund: 'Reembolso',
+      payment_received: 'Ingreso por Servicio',
+      withdrawal_requested: 'Retiro en Revisión',
+      withdrawal_completed: 'Retiro Ejecutado',
+      withdrawal_reversed: 'Retiro Revertido',
+      refund: 'Reembolso Emitido',
     };
     return labels[type] || type;
   }
@@ -481,7 +564,13 @@ export class WorkshopWalletComponent implements OnInit {
     if (!dateStr) return '—';
     try {
       const d = new Date(dateStr);
-      return d.toLocaleDateString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      return d.toLocaleDateString('es-BO', { 
+        day: '2-digit', 
+        month: 'long', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     } catch {
       return dateStr;
     }

@@ -79,7 +79,7 @@ export class PaymentService {
       .set('size', size.toString());
     if (status) params = params.set('status', status);
 
-    return this.http.get<any>(`${this.baseUrl}/api/v1/admin/withdrawals`, { params }).pipe(
+    return this.http.get<any>(`${this.baseUrl}/admin/withdrawals`, { params }).pipe(
       map(res => res.data)
     );
   }
@@ -87,7 +87,7 @@ export class PaymentService {
   /** Approve a withdrawal */
   approveWithdrawal(withdrawalId: number, adminNotes?: string): Observable<Withdrawal> {
     return this.http.patch<any>(
-      `${this.baseUrl}/api/v1/admin/withdrawals/${withdrawalId}/approve`,
+      `${this.baseUrl}/admin/withdrawals/${withdrawalId}/approve`,
       { admin_notes: adminNotes }
     ).pipe(map(res => res.data));
   }
@@ -95,7 +95,7 @@ export class PaymentService {
   /** Reject a withdrawal */
   rejectWithdrawal(withdrawalId: number, adminNotes?: string): Observable<Withdrawal> {
     return this.http.patch<any>(
-      `${this.baseUrl}/api/v1/admin/withdrawals/${withdrawalId}/reject`,
+      `${this.baseUrl}/admin/withdrawals/${withdrawalId}/reject`,
       { admin_notes: adminNotes }
     ).pipe(map(res => res.data));
   }
@@ -103,7 +103,7 @@ export class PaymentService {
   /** Mark withdrawal as paid */
   markWithdrawalPaid(withdrawalId: number, adminNotes?: string): Observable<Withdrawal> {
     return this.http.patch<any>(
-      `${this.baseUrl}/api/v1/admin/withdrawals/${withdrawalId}/mark-paid`,
+      `${this.baseUrl}/admin/withdrawals/${withdrawalId}/mark-paid`,
       { admin_notes: adminNotes }
     ).pipe(map(res => res.data));
   }
@@ -115,7 +115,7 @@ export class PaymentService {
       .set('size', size.toString());
 
     return this.http.get<any>(
-      `${this.baseUrl}/api/v1/admin/workshops/${workshopId}/settlements`,
+      `${this.baseUrl}/admin/workshops/${workshopId}/settlements`,
       { params }
     ).pipe(map(res => res.data));
   }
@@ -123,7 +123,7 @@ export class PaymentService {
   /** Generate a settlement for a workshop */
   generateSettlement(workshopId: number, periodStart: string, periodEnd: string, notes?: string): Observable<Settlement> {
     return this.http.post<any>(
-      `${this.baseUrl}/api/v1/admin/workshops/${workshopId}/settlements/generate`,
+      `${this.baseUrl}/admin/workshops/${workshopId}/settlements/generate`,
       {
         period_start: periodStart,
         period_end: periodEnd,
@@ -138,7 +138,7 @@ export class PaymentService {
 
   /** Get workshop wallet */
   getMyWallet(): Observable<WalletInfo> {
-    return this.http.get<any>(`${this.baseUrl}/api/v1/workshops/me/wallet`).pipe(
+    return this.http.get<any>(`${this.baseUrl}/workshops/me/wallet`).pipe(
       map(res => res.data)
     );
   }
@@ -150,14 +150,14 @@ export class PaymentService {
       .set('size', size.toString());
     if (movementType) params = params.set('movement_type', movementType);
 
-    return this.http.get<any>(`${this.baseUrl}/api/v1/workshops/me/financial-history`, { params }).pipe(
+    return this.http.get<any>(`${this.baseUrl}/workshops/me/financial-history`, { params }).pipe(
       map(res => res.data)
     );
   }
 
   /** Request a withdrawal */
   requestWithdrawal(amount: number, bankName?: string, accountNumber?: string, accountHolder?: string, notes?: string): Observable<Withdrawal> {
-    return this.http.post<any>(`${this.baseUrl}/api/v1/workshops/me/withdrawals`, {
+    return this.http.post<any>(`${this.baseUrl}/workshops/me/withdrawals`, {
       amount,
       bank_name: bankName,
       account_number: accountNumber,
@@ -173,7 +173,7 @@ export class PaymentService {
       .set('size', size.toString());
     if (status) params = params.set('status', status);
 
-    return this.http.get<any>(`${this.baseUrl}/api/v1/workshops/me/withdrawals`, { params }).pipe(
+    return this.http.get<any>(`${this.baseUrl}/workshops/me/withdrawals`, { params }).pipe(
       map(res => res.data)
     );
   }
