@@ -1,6 +1,7 @@
-import { Component, ChangeDetectionStrategy, inject, signal, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, OnInit, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PaymentService, Withdrawal } from '../../../core/services/payment.service';
 
 @Component({
@@ -146,15 +147,16 @@ import { PaymentService, Withdrawal } from '../../../core/services/payment.servi
 
       <!-- Admin notes modal -->
       @if (showNotesModal()) {
-        <div class="modal-overlay" (click)="closeModal()">
-          <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-overlay" (click)="closeModal()" (keydown.escape)="closeModal()" tabindex="0" role="button">
+          <div class="modal-content" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()" tabindex="-1" role="dialog">
             <div class="modal-header">
               <h3>{{ modalTitle() }}</h3>
               <button class="btn-close" (click)="closeModal()">&times;</button>
             </div>
             <div class="modal-body">
-              <label>Observaciones del Administrador</label>
+              <label for="adminNotes">Observaciones del Administrador</label>
               <textarea
+                id="adminNotes"
                 [(ngModel)]="adminNotes"
                 placeholder="Escribe aquí cualquier detalle relevante sobre esta operación..."
                 rows="4"
@@ -270,6 +272,7 @@ import { PaymentService, Withdrawal } from '../../../core/services/payment.servi
 })
 export class WithdrawalsManagementComponent implements OnInit {
   private paymentService = inject(PaymentService);
+  private destroyRef = inject(DestroyRef);
 
   withdrawals = signal<Withdrawal[]>([]);
   isLoading = signal(false);
@@ -292,7 +295,9 @@ export class WithdrawalsManagementComponent implements OnInit {
     this.isLoading.set(true);
     const status = this.statusFilter() || undefined;
 
-    this.paymentService.getAllWithdrawals(1, 100, status).subscribe({
+    this.paymentService.getAllWithdrawals(1, 100, status)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
       next: (data) => {
         this.withdrawals.set(data.withdrawals);
         this.updateCounts(data.withdrawals);
@@ -354,12 +359,13 @@ export class WithdrawalsManagementComponent implements OnInit {
         return;
     }
 
-    obs.subscribe({
+    obs.pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
       next: () => {
         this.closeModal();
         this.loadWithdrawals();
       },
-      error: (err: any) => {
+      error: (err: { error?: { detail?: string } }) => {
         alert(err?.error?.detail || 'Error al procesar la solicitud');
       }
     });

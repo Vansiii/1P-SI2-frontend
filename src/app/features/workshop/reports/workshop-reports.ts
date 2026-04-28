@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseChartDirective } from 'ng2-charts';
-import { ChartConfiguration, ChartData, ChartType } from 'chart.js';
-import { MetricsService, FinancialReport, PerformanceReport } from '../../../core/services/metrics.service';
+import { ChartConfiguration, ChartData } from 'chart.js';
+import { MetricsService, FinancialReport, PerformanceReport, IncidentReport } from '../../../core/services/metrics.service';
 import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
@@ -248,7 +248,7 @@ export class WorkshopReportsComponent implements OnInit {
   
   financial = signal<FinancialReport | null>(null);
   performance = signal<PerformanceReport | null>(null);
-  incidents = signal<any[]>([]);
+  incidents = signal<IncidentReport[]>([]);
   isLoading = signal(false);
 
   // Charts data
@@ -331,7 +331,7 @@ export class WorkshopReportsComponent implements OnInit {
       });
   }
 
-  updateCharts(incidents: any[]) {
+  updateCharts(incidents: IncidentReport[]) {
     // Status Pie
     const statusCounts = {
       'resuelto': 0,

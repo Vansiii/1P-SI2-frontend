@@ -1,6 +1,7 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, DestroyRef } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
 
@@ -11,7 +12,8 @@ export interface IncidentReport {
   estado_actual: string;
   created_at: string;
   categoria_ia?: string;
-  [key: string]: any;
+  direccion_referencia?: string;
+  [key: string]: unknown;
 }
 
 export interface FinancialReport {
@@ -41,22 +43,31 @@ export interface PerformanceReport {
 })
 export class MetricsService {
   private http = inject(HttpClient);
+  private destroyRef = inject(DestroyRef);
   private baseUrl = `${environment.apiBaseUrl}/metrics`;
 
   /** Get dashboard metrics for system admin */
-  getSystemMetrics(start?: string, end?: string): Observable<any> {
+  getSystemMetrics(start?: string, end?: string): Observable<{ 
+    incidents: { total: number }; 
+    resources: { active_workshops: number }; 
+    performance: { assignment_success_rate: number } 
+  }> {
     let params = new HttpParams();
     if (start) params = params.set('start_date', start);
     if (end) params = params.set('end_date', end);
-    return this.http.get<any>(`${this.baseUrl}/system`, { params }).pipe(map(res => res.data));
+    return this.http.get<{ data: { 
+      incidents: { total: number }; 
+      resources: { active_workshops: number }; 
+      performance: { assignment_success_rate: number } 
+    } }>(`${this.baseUrl}/system`, { params }).pipe(map(res => res.data));
   }
 
   /** Get dashboard metrics for a workshop */
-  getWorkshopMetrics(workshopId: number, start?: string, end?: string): Observable<any> {
+  getWorkshopMetrics(workshopId: number, start?: string, end?: string): Observable<{ total_incidents: number; total_revenue: number; avg_response_time: number }> {
     let params = new HttpParams();
     if (start) params = params.set('start_date', start);
     if (end) params = params.set('end_date', end);
-    return this.http.get<any>(`${this.baseUrl}/workshops/${workshopId}`, { params }).pipe(map(res => res.data));
+    return this.http.get<{ data: { total_incidents: number; total_revenue: number; avg_response_time: number } }>(`${this.baseUrl}/workshops/${workshopId}`, { params }).pipe(map(res => res.data));
   }
 
   /** Get incident report */
@@ -66,7 +77,7 @@ export class MetricsService {
     if (status) params = params.set('status', status);
     if (workshopId) params = params.set('workshop_id', workshopId);
     
-    return this.http.get<any>(`${this.baseUrl}/reports/incidents`, { params }).pipe(map(res => res.data));
+    return this.http.get<{ data: IncidentReport[] }>(`${this.baseUrl}/reports/incidents`, { params }).pipe(map(res => res.data));
   }
 
   /** Get financial report */
@@ -74,7 +85,7 @@ export class MetricsService {
     let params = new HttpParams().set('start_date', start).set('end_date', end);
     if (workshopId) params = params.set('workshop_id', workshopId);
     
-    return this.http.get<any>(`${this.baseUrl}/reports/financial`, { params }).pipe(map(res => res.data));
+    return this.http.get<{ data: FinancialReport }>(`${this.baseUrl}/reports/financial`, { params }).pipe(map(res => res.data));
   }
 
   /** Get performance report */
@@ -84,7 +95,7 @@ export class MetricsService {
     if (end) params = params.set('end_date', end);
     if (workshopId) params = params.set('workshop_id', workshopId);
     
-    return this.http.get<any>(`${this.baseUrl}/reports/performance`, { params }).pipe(map(res => res.data));
+    return this.http.get<{ data: PerformanceReport[] }>(`${this.baseUrl}/reports/performance`, { params }).pipe(map(res => res.data));
   }
 
   /** Export report to PDF or Excel */
@@ -98,7 +109,9 @@ export class MetricsService {
 
     const url = `${this.baseUrl}/reports/export/${format}`;
     
-    this.http.get(url, { params, responseType: 'blob' }).subscribe({
+    this.http.get(url, { params, responseType: 'blob' })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
       next: (blob) => {
         const fileName = `report_${type}_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
         const objectUrl = window.URL.createObjectURL(blob);
@@ -113,22 +126,22 @@ export class MetricsService {
   }
 
   // Legacy methods restored for existing dashboard
-  getIncidentsByCategory(start?: string, end?: string): Observable<any> {
+  getIncidentsByCategory(start?: string, end?: string): Observable<{ categories: { category_name: string; count: number }[] }> {
     let params = new HttpParams();
     if (start) params = params.set('start_date', start);
     if (end) params = params.set('end_date', end);
-    return this.http.get<any>(`${this.baseUrl}/incidents/by-category`, { params }).pipe(map(res => res.data));
+    return this.http.get<{ data: { categories: { category_name: string; count: number }[] } }>(`${this.baseUrl}/incidents/by-category`, { params }).pipe(map(res => res.data));
   }
 
-  getResponseTimeSeries(days: number = 30): Observable<any> {
+  getResponseTimeSeries(days = 30): Observable<{ date: string; value: number }[]> {
     const params = new HttpParams().set('days', days.toString());
-    return this.http.get<any>(`${this.baseUrl}/timeseries/response-time`, { params });
+    return this.http.get<{ data: { date: string; value: number }[] }>(`${this.baseUrl}/timeseries/response-time`, { params }).pipe(map(res => res.data));
   }
 
-  getTechnicianPerformance(workshopId: number, days: number = 30): Observable<any> {
+  getTechnicianPerformance(workshopId: number, days = 30): Observable<{ technician_name: string; performance_score: number }[]> {
     const params = new HttpParams()
       .set('workshop_id', workshopId.toString())
       .set('days', days.toString());
-    return this.http.get<any>(`${this.baseUrl}/timeseries/technician-performance`, { params });
+    return this.http.get<{ data: { technician_name: string; performance_score: number }[] }>(`${this.baseUrl}/timeseries/technician-performance`, { params }).pipe(map(res => res.data));
   }
 }

@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseChartDirective } from 'ng2-charts';
-import { ChartConfiguration, ChartData, ChartType } from 'chart.js';
-import { MetricsService, FinancialReport } from '../../../core/services/metrics.service';
+import { ChartConfiguration, ChartData } from 'chart.js';
+import { MetricsService, FinancialReport, PerformanceReport } from '../../../core/services/metrics.service';
 
 @Component({
   selector: 'app-admin-reports',
@@ -210,9 +210,13 @@ export class AdminReportsComponent implements OnInit {
   startDate = '';
   endDate = '';
   
-  systemMetrics = signal<any>(null);
+  systemMetrics = signal<{ 
+    incidents: { total: number }; 
+    resources: { active_workshops: number }; 
+    performance: { assignment_success_rate: number } 
+  } | null>(null);
   financial = signal<FinancialReport | null>(null);
-  performance = signal<any[]>([]);
+  performance = signal<PerformanceReport[]>([]);
 
   constructor() {
     effect(() => {
@@ -243,7 +247,7 @@ export class AdminReportsComponent implements OnInit {
     datasets: [{ label: 'Incidentes Atendidos', data: [], backgroundColor: '#6366f1' }]
   };
 
-  categoryDataSignal = signal<any[]>([]);
+  categoryDataSignal = signal<{ category_name: string; count: number }[]>([]);
 
   pieChartOptions: ChartConfiguration['options'] = {
     responsive: true,
@@ -290,9 +294,9 @@ export class AdminReportsComponent implements OnInit {
       });
   }
 
-  updateCategoryChart(data: any[]) {
+  updateCategoryChart(data: { category_name: string; count: number }[]) {
     this.categoryChartData = {
-      labels: data.map(d => d.category_name),
+      labels: data.map((d: { category_name: string; count: number }) => d.category_name),
       datasets: [{
         data: data.map(d => d.count),
         backgroundColor: ['#4caf50', '#2196f3', '#ff9800', '#9c27b0', '#f44336', '#00bcd4', '#ffeb3b']
@@ -300,7 +304,7 @@ export class AdminReportsComponent implements OnInit {
     };
   }
 
-  updatePerformanceChart(data: any[]) {
+  updatePerformanceChart(data: PerformanceReport[]) {
     const top5 = [...data].sort((a, b) => b.total_incidents - a.total_incidents).slice(0, 5);
     this.performanceChartData = {
       labels: top5.map(t => t.name),
