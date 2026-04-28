@@ -1,4 +1,4 @@
-﻿import { Routes } from '@angular/router';
+import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { publicOnlyGuard } from './core/guards/public-only.guard';
 import { AuthPageComponent } from './features/auth/auth-page';
@@ -74,6 +74,10 @@ export const routes: Routes = [
       {
         path: 'incident/:id',
         loadComponent: () => import('./features/admin/incident-detail-admin/incident-detail-admin').then(m => m.IncidentDetailAdminComponent)
+      },
+      {
+        path: 'withdrawals',
+        loadComponent: () => import('./features/admin/withdrawals-management/withdrawals-management').then(m => m.WithdrawalsManagementComponent)
       }
     ]
   },
@@ -89,6 +93,10 @@ export const routes: Routes = [
       { 
         path: 'technicians', 
         loadComponent: () => import('./features/workshop/technicians-management/technicians-management').then(m => m.TechniciansManagementComponent)
+      },
+      {
+        path: 'wallet',
+        loadComponent: () => import('./features/workshop/wallet/wallet').then(m => m.WorkshopWalletComponent)
       }
     ]
   },
