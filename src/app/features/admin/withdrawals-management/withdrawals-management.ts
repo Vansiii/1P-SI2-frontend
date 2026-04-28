@@ -9,125 +9,160 @@ import { PaymentService, Withdrawal } from '../../../core/services/payment.servi
   imports: [CommonModule, FormsModule],
   template: `
     <div class="withdrawals-management">
-      <header class="page-header">
-        <h1>Gestión de Retiros</h1>
-        <p class="subtitle">Administra las solicitudes de retiro de los talleres</p>
+      <header class="reports-header">
+        <div class="header-content">
+          <h1>Gestión de Retiros</h1>
+          <p class="section-subtitle">Administra y procesa las solicitudes de liquidación de los talleres asociados.</p>
+        </div>
+        
+        <div class="date-filters">
+          <div class="field">
+            <label for="statusFilter">Estado</label>
+            <select id="statusFilter" [ngModel]="statusFilter()" (ngModelChange)="onStatusFilterChange($event)">
+              <option value="">Todos los registros</option>
+              <option value="pending">Pendientes</option>
+              <option value="approved">Aprobados</option>
+              <option value="rejected">Rechazados</option>
+              <option value="paid">Pagados</option>
+            </select>
+          </div>
+          <button class="btn-refresh" (click)="loadWithdrawals()" aria-label="Actualizar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          </button>
+        </div>
       </header>
 
-      <!-- Filters -->
-      <div class="filters-row">
-        <div class="filter-group">
-          <label for="statusFilter">Filtrar por estado:</label>
-          <select id="statusFilter" [ngModel]="statusFilter()" (ngModelChange)="onStatusFilterChange($event)">
-            <option value="">Todos</option>
-            <option value="pending">Pendientes</option>
-            <option value="approved">Aprobados</option>
-            <option value="rejected">Rechazados</option>
-            <option value="paid">Pagados</option>
-          </select>
+      <!-- Stats Grid -->
+      <div class="kpi-grid">
+        <div class="kpi-card pending">
+          <span class="kpi-label">Pendientes</span>
+          <span class="kpi-value">{{ pendingCount() }}</span>
+          <div class="kpi-trend">Por aprobar</div>
         </div>
-        <button class="btn-refresh" (click)="loadWithdrawals()">
-          <span class="icon">🔄</span> Actualizar
-        </button>
-      </div>
-
-      <!-- Stats cards -->
-      <div class="stats-row">
-        <div class="stat-card pending">
-          <div class="stat-number">{{ pendingCount() }}</div>
-          <div class="stat-label">Pendientes</div>
+        <div class="kpi-card approved">
+          <span class="kpi-label">Aprobados</span>
+          <span class="kpi-value">{{ approvedCount() }}</span>
+          <div class="kpi-trend">Pendientes de pago</div>
         </div>
-        <div class="stat-card approved">
-          <div class="stat-number">{{ approvedCount() }}</div>
-          <div class="stat-label">Aprobados</div>
-        </div>
-        <div class="stat-card paid">
-          <div class="stat-number">{{ paidCount() }}</div>
-          <div class="stat-label">Pagados</div>
+        <div class="kpi-card paid">
+          <span class="kpi-label">Pagados</span>
+          <span class="kpi-value">{{ paidCount() }}</span>
+          <div class="kpi-trend">Liquidaciones completadas</div>
         </div>
       </div>
 
-      <!-- Loading -->
-      @if (isLoading()) {
-        <div class="loading-container">
-          <div class="spinner"></div>
-          <p>Cargando solicitudes...</p>
-        </div>
-      }
+      <!-- Main Content Area -->
+      <div class="reports-main">
+        <section class="report-section full-width">
+          <div class="section-header">
+            <h2>Solicitudes de Liquidación</h2>
+          </div>
 
-      <!-- Withdrawals list -->
-      @if (!isLoading() && withdrawals().length > 0) {
-        <div class="withdrawals-table">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Taller</th>
-                <th>Monto</th>
-                <th>Banco</th>
-                <th>Estado</th>
-                <th>Fecha</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (w of withdrawals(); track w.id) {
-                <tr [class]="'row-' + w.status">
-                  <td>#{{ w.id }}</td>
-                  <td>Taller #{{ w.workshop_id }}</td>
-                  <td class="amount">Bs. {{ w.amount.toFixed(2) }}</td>
-                  <td>{{ w.bank_name || '—' }}</td>
-                  <td>
-                    <span [class]="'badge badge-' + w.status">
-                      {{ getStatusLabel(w.status) }}
-                    </span>
-                  </td>
-                  <td>{{ formatDate(w.requested_at) }}</td>
-                  <td class="actions">
-                    @if (w.status === 'pending') {
-                      <button class="btn-approve" (click)="approve(w)" title="Aprobar">
-                        ✅ Aprobar
-                      </button>
-                      <button class="btn-reject" (click)="reject(w)" title="Rechazar">
-                        ❌ Rechazar
-                      </button>
-                    }
-                    @if (w.status === 'approved') {
-                      <button class="btn-paid" (click)="markPaid(w)" title="Marcar como pagado">
-                        💸 Pagado
-                      </button>
-                    }
-                    @if (w.status === 'paid' || w.status === 'rejected') {
-                      <span class="text-muted">Sin acciones</span>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      }
-
-      @if (!isLoading() && withdrawals().length === 0) {
-        <div class="empty-state">
-          <span class="empty-icon">📋</span>
-          <p>No hay solicitudes de retiro</p>
-        </div>
-      }
+          @if (isLoading()) {
+            <div class="loading-container">
+              <div class="spinner"></div>
+              <p>Sincronizando con el servidor...</p>
+            </div>
+          } @else if (withdrawals().length > 0) {
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Taller</th>
+                    <th>Monto</th>
+                    <th>Banco / Referencia</th>
+                    <th>Estado</th>
+                    <th>Fecha Solicitud</th>
+                    <th class="text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (w of withdrawals(); track w.id) {
+                    <tr [class]="'row-' + w.status">
+                      <td class="font-bold">#{{ w.id }}</td>
+                      <td>
+                        <div class="workshop-info">
+                          <span class="workshop-id">Taller ID: {{ w.workshop_id }}</span>
+                        </div>
+                      </td>
+                      <td class="amount">Bs. {{ w.amount | number:'1.2-2' }}</td>
+                      <td>
+                        <div class="bank-details">
+                          <span class="bank-name">{{ w.bank_name || 'No especificado' }}</span>
+                          @if (w.admin_notes) {
+                            <small class="admin-notes">{{ w.admin_notes }}</small>
+                          }
+                        </div>
+                      </td>
+                      <td>
+                        <span [class]="'badge badge-' + w.status">
+                          {{ getStatusLabel(w.status) }}
+                        </span>
+                      </td>
+                      <td>{{ formatDate(w.requested_at) }}</td>
+                      <td class="actions">
+                        <div class="action-buttons">
+                          @if (w.status === 'pending') {
+                            <button class="btn-action approve" (click)="approve(w)" title="Aprobar Solicitud">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                              Aprobar
+                            </button>
+                            <button class="btn-action reject" (click)="reject(w)" title="Rechazar Solicitud">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              Rechazar
+                            </button>
+                          }
+                          @if (w.status === 'approved') {
+                            <button class="btn-action pay" (click)="markPaid(w)" title="Confirmar Pago">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                              Pagar
+                            </button>
+                          }
+                          @if (w.status === 'paid' || w.status === 'rejected') {
+                            <span class="status-locked">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                              Cerrado
+                            </span>
+                          }
+                        </div>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="empty-state">
+              <div class="empty-icon-wrapper">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              </div>
+              <h3>Sin solicitudes</h3>
+              <p>No se encontraron retiros con el filtro seleccionado.</p>
+            </div>
+          }
+        </section>
+      </div>
 
       <!-- Admin notes modal -->
       @if (showNotesModal()) {
         <div class="modal-overlay" (click)="closeModal()">
           <div class="modal-content" (click)="$event.stopPropagation()">
-            <h3>{{ modalTitle() }}</h3>
-            <textarea
-              [(ngModel)]="adminNotes"
-              placeholder="Notas del administrador (opcional)"
-              rows="3"
-            ></textarea>
-            <div class="modal-actions">
-              <button class="btn-cancel" (click)="closeModal()">Cancelar</button>
-              <button class="btn-confirm" (click)="confirmAction()">Confirmar</button>
+            <div class="modal-header">
+              <h3>{{ modalTitle() }}</h3>
+              <button class="btn-close" (click)="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+              <label>Observaciones del Administrador</label>
+              <textarea
+                [(ngModel)]="adminNotes"
+                placeholder="Escribe aquí cualquier detalle relevante sobre esta operación..."
+                rows="4"
+              ></textarea>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-secondary" (click)="closeModal()">Cancelar</button>
+              <button class="btn-primary" (click)="confirmAction()">Confirmar Operación</button>
             </div>
           </div>
         </div>
@@ -135,240 +170,102 @@ import { PaymentService, Withdrawal } from '../../../core/services/payment.servi
     </div>
   `,
   styles: `
-    :host { display: block; }
+    .withdrawals-management { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+    
+    .reports-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem; gap: 2rem; }
+    .header-content h1 { font-size: 2.25rem; font-weight: 700; margin: 0; letter-spacing: -0.025em; }
+    .section-subtitle { color: var(--text-muted); margin-top: 0.5rem; }
 
-    .withdrawals-management {
-      padding: 24px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
+    .date-filters { display: flex; gap: 1rem; align-items: flex-end; background: var(--surface); padding: 1rem; border-radius: 16px; border: 1px solid var(--border-light); }
+    .date-filters .field { display: flex; flex-direction: column; gap: 4px; }
+    .date-filters label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
+    .date-filters select { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-light); background: #f8fafc; font-weight: 500; min-width: 180px; }
+    
+    .btn-refresh { background: var(--primary); color: white; border: none; width: 40px; height: 40px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .btn-refresh svg { width: 20px; height: 20px; transition: transform 0.3s ease; }
+    .btn-refresh:hover svg { transform: rotate(180deg); }
 
-    .page-header h1 {
-      margin: 0 0 4px;
-      font-size: 1.75rem;
-      color: #1a1a2e;
-    }
+    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 3rem; }
+    .kpi-card { background: var(--surface); padding: 1.5rem; border-radius: 20px; border: 1px solid var(--border-light); box-shadow: var(--shadow-sm); position: relative; overflow: hidden; }
+    .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; }
+    .kpi-card.pending::before { background: #f59e0b; }
+    .kpi-card.approved::before { background: #3b82f6; }
+    .kpi-card.paid::before { background: #10b981; }
+    
+    .kpi-label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+    .kpi-value { display: block; font-size: 2rem; font-weight: 700; color: var(--text-main); font-family: var(--font-display); }
+    .kpi-trend { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; }
 
-    .subtitle {
-      color: #6b7280;
-      margin: 0 0 24px;
-    }
+    .reports-main { display: grid; grid-template-columns: 1fr; gap: 2rem; }
+    .report-section { background: var(--surface); padding: 2rem; border-radius: 24px; border: 1px solid var(--border-light); box-shadow: var(--shadow-md); }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    .section-header h2 { font-size: 1.25rem; font-weight: 700; margin: 0; }
 
-    .filters-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 20px;
-    }
+    .full-width { grid-column: 1 / -1; }
 
-    .filter-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+    .table-container { overflow-x: auto; margin: 0 -2rem; padding: 0 2rem; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { padding: 1.25rem 1rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border-light); }
+    td { padding: 1.25rem 1rem; font-size: 0.85rem; border-bottom: 1px solid #f8fafc; vertical-align: middle; }
+    
+    .font-bold { font-weight: 700; color: var(--text-main); }
+    .amount { font-family: var(--font-display); font-weight: 700; color: var(--primary); font-size: 1rem; }
+    
+    .workshop-info { display: flex; flex-direction: column; }
+    .workshop-id { font-weight: 600; color: var(--text-main); }
+    
+    .bank-details { display: flex; flex-direction: column; gap: 4px; }
+    .bank-name { font-weight: 500; }
+    .admin-notes { font-size: 0.75rem; color: var(--text-muted); font-style: italic; max-width: 200px; }
 
-    .filter-group select {
-      padding: 8px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      font-size: 0.875rem;
-    }
-
-    .btn-refresh {
-      padding: 8px 16px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      background: white;
-      cursor: pointer;
-      font-size: 0.875rem;
-      transition: background 0.2s;
-    }
-
-    .btn-refresh:hover {
-      background: #f3f4f6;
-    }
-
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-
-    .stat-card {
-      padding: 20px;
-      border-radius: 12px;
-      text-align: center;
-    }
-
-    .stat-card.pending { background: #fff7ed; border: 1px solid #fed7aa; }
-    .stat-card.approved { background: #eff6ff; border: 1px solid #bfdbfe; }
-    .stat-card.paid { background: #f0fdf4; border: 1px solid #bbf7d0; }
-
-    .stat-number {
-      font-size: 2rem;
-      font-weight: 700;
-    }
-
-    .stat-label {
-      font-size: 0.875rem;
-      color: #6b7280;
-      margin-top: 4px;
-    }
-
-    .loading-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 48px;
-      color: #6b7280;
-    }
-
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid #e5e7eb;
-      border-top-color: #3b82f6;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-bottom: 16px;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .withdrawals-table {
-      overflow-x: auto;
-      border-radius: 12px;
-      border: 1px solid #e5e7eb;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    th {
-      background: #f9fafb;
-      padding: 12px 16px;
-      text-align: left;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      color: #6b7280;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    td {
-      padding: 12px 16px;
-      border-bottom: 1px solid #f3f4f6;
-      font-size: 0.875rem;
-    }
-
-    .amount {
-      font-weight: 600;
-      font-family: 'Roboto Mono', monospace;
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 9999px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-
+    .badge { display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
     .badge-pending { background: #fef3c7; color: #92400e; }
     .badge-approved { background: #dbeafe; color: #1e40af; }
-    .badge-rejected { background: #fecaca; color: #991b1b; }
-    .badge-paid { background: #bbf7d0; color: #166534; }
+    .badge-rejected { background: #fee2e2; color: #991b1b; }
+    .badge-paid { background: #dcfce7; color: #166534; }
 
-    .actions {
-      display: flex;
-      gap: 8px;
-    }
+    .action-buttons { display: flex; gap: 8px; align-items: center; }
+    .text-right { text-align: right; }
 
-    .btn-approve, .btn-reject, .btn-paid {
-      padding: 6px 12px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.8rem;
-      font-weight: 500;
-      transition: opacity 0.2s;
-    }
+    .btn-action { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s ease; }
+    .btn-action svg { width: 14px; height: 14px; }
+    
+    .btn-action.approve { background: #10b981; color: white; }
+    .btn-action.reject { background: white; color: #ef4444; border: 1.5px solid #fee2e2; }
+    .btn-action.pay { background: var(--primary); color: white; }
+    .btn-action:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 
-    .btn-approve { background: #d1fae5; color: #065f46; }
-    .btn-reject { background: #fee2e2; color: #991b1b; }
-    .btn-paid { background: #dbeafe; color: #1e40af; }
+    .status-locked { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; background: #f8fafc; padding: 6px 12px; border-radius: 8px; }
+    .status-locked svg { width: 12px; height: 12px; }
 
-    .btn-approve:hover, .btn-reject:hover, .btn-paid:hover { opacity: 0.8; }
+    .loading-container { display: flex; flex-direction: column; align-items: center; padding: 4rem; color: var(--text-muted); }
+    .spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    .text-muted { color: #9ca3af; font-size: 0.8rem; }
+    .empty-state { display: flex; flex-direction: column; align-items: center; padding: 5rem 2rem; text-align: center; color: var(--text-muted); }
+    .empty-icon-wrapper { width: 80px; height: 80px; background: #f8fafc; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 1.5rem; color: #cbd5e1; }
+    .empty-icon-wrapper svg { width: 40px; height: 40px; }
+    .empty-state h3 { margin: 0 0 0.5rem; color: var(--text-main); font-size: 1.25rem; }
 
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 48px;
-      color: #9ca3af;
-    }
+    /* Modal Styling */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fadeIn 0.3s ease; }
+    .modal-content { background: white; border-radius: 24px; width: 450px; max-width: 90vw; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); animation: slideUp 0.3s ease; }
+    .modal-header { padding: 1.5rem 2rem; background: #f8fafc; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h3 { margin: 0; font-size: 1.1rem; font-weight: 700; color: #1e293b; }
+    .btn-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #94a3b8; }
+    .modal-body { padding: 2rem; }
+    .modal-body label { display: block; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 0.75rem; }
+    .modal-body textarea { width: 100%; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1rem; font-family: inherit; font-size: 0.9rem; transition: border-color 0.2s; }
+    .modal-body textarea:focus { outline: none; border-color: var(--primary); ring: 2px solid var(--primary-light); }
+    .modal-footer { padding: 1.5rem 2rem; background: #f8fafc; display: flex; gap: 1rem; justify-content: flex-end; }
+    
+    .btn-primary, .btn-secondary { padding: 10px 20px; border-radius: 12px; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+    .btn-primary { background: var(--primary); color: white; border: none; }
+    .btn-secondary { background: white; color: #64748b; border: 1px solid #e2e8f0; }
+    .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); }
 
-    .empty-icon { font-size: 3rem; margin-bottom: 12px; }
-
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.4);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
-
-    .modal-content {
-      background: white;
-      border-radius: 16px;
-      padding: 24px;
-      width: 400px;
-      max-width: 90vw;
-    }
-
-    .modal-content h3 { margin: 0 0 16px; }
-
-    .modal-content textarea {
-      width: 100%;
-      padding: 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      resize: vertical;
-      font-family: inherit;
-    }
-
-    .modal-actions {
-      display: flex;
-      gap: 12px;
-      justify-content: flex-end;
-      margin-top: 16px;
-    }
-
-    .btn-cancel {
-      padding: 8px 16px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      background: white;
-      cursor: pointer;
-    }
-
-    .btn-confirm {
-      padding: 8px 16px;
-      border: none;
-      border-radius: 8px;
-      background: #3b82f6;
-      color: white;
-      cursor: pointer;
-    }
-
-    .btn-confirm:hover { background: #2563eb; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   `
 })
 export class WithdrawalsManagementComponent implements OnInit {

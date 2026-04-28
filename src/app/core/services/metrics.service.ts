@@ -1,147 +1,134 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
 
-export interface SystemMetrics {
-  total_incidents: number;
-  active_incidents: number;
-  resolved_incidents: number;
-  avg_response_time_minutes: number;
-  avg_resolution_time_minutes: number;
-  resolution_rate: number;
-  active_technicians: number;
-  active_workshops: number;
-  total_distance_km: number;
-  assignment_success_rate: number;
+export interface IncidentReport {
+  id: number;
+  client_id: number;
+  taller_id: number | null;
+  estado_actual: string;
+  created_at: string;
+  categoria_ia?: string;
+  [key: string]: any;
 }
 
-export interface WorkshopMetrics {
+export interface FinancialReport {
+  summary: {
+    total_collected: number;
+    total_commission: number;
+    total_workshop_net: number;
+    transaction_count: number;
+    total_withdrawn: number;
+  };
+  period: {
+    start: string;
+    end: string;
+  };
+}
+
+export interface PerformanceReport {
   workshop_id: number;
-  workshop_name: string;
+  name: string;
   total_incidents: number;
-  resolved_incidents: number;
-  avg_response_time_minutes: number;
-  avg_resolution_time_minutes: number;
-  resolution_rate: number;
-  active_technicians: number;
-  avg_rating: number;
-}
-
-export interface TechnicianMetrics {
-  technician_id: number;
-  technician_name: string;
-  total_incidents: number;
-  resolved_incidents: number;
-  avg_response_time_minutes: number;
-  avg_resolution_time_minutes: number;
-  total_distance_km: number;
-  avg_rating: number;
-  acceptance_rate: number;
-}
-
-export interface CategoryMetrics {
-  category_id: number;
-  category_name: string;
-  count: number;
-  percentage: number;
-}
-
-export interface TimeSeriesDataPoint {
-  date: string;
-  value: number;
-}
-
-export interface TechnicianPerformance {
-  technician_id: number;
-  technician_name: string;
-  total_incidents: number;
-  resolved_incidents: number;
-  avg_resolution_minutes: number;
-  avg_rating: number;
-  resolution_rate: number;
+  avg_response_min: number;
+  avg_resolution_min: number;
 }
 
 @Injectable({
   providedIn: 'root'
 })
 export class MetricsService {
-  private baseUrl = `${environment.apiUrl}/api/v1/metrics`;
-  private timeSeriesUrl = `${environment.apiUrl}/api/v1/metrics/timeseries`;
+  private http = inject(HttpClient);
+  private baseUrl = `${environment.apiBaseUrl}/metrics`;
 
-  constructor(private http: HttpClient) {}
-
-  /**
-   * Get system-wide metrics
-   */
-  getSystemMetrics(): Observable<{ data: SystemMetrics }> {
-    return this.http.get<{ data: SystemMetrics }>(`${this.baseUrl}/system`);
+  /** Get dashboard metrics for system admin */
+  getSystemMetrics(start?: string, end?: string): Observable<any> {
+    let params = new HttpParams();
+    if (start) params = params.set('start_date', start);
+    if (end) params = params.set('end_date', end);
+    return this.http.get<any>(`${this.baseUrl}/system`, { params }).pipe(map(res => res.data));
   }
 
-  /**
-   * Get metrics for a specific workshop
-   */
-  getWorkshopMetrics(workshopId: number): Observable<{ data: WorkshopMetrics }> {
-    return this.http.get<{ data: WorkshopMetrics }>(`${this.baseUrl}/workshops/${workshopId}`);
+  /** Get dashboard metrics for a workshop */
+  getWorkshopMetrics(workshopId: number, start?: string, end?: string): Observable<any> {
+    let params = new HttpParams();
+    if (start) params = params.set('start_date', start);
+    if (end) params = params.set('end_date', end);
+    return this.http.get<any>(`${this.baseUrl}/workshops/${workshopId}`, { params }).pipe(map(res => res.data));
   }
 
-  /**
-   * Get metrics for a specific technician
-   */
-  getTechnicianMetrics(technicianId: number): Observable<{ data: TechnicianMetrics }> {
-    return this.http.get<{ data: TechnicianMetrics }>(`${this.baseUrl}/technicians/${technicianId}`);
+  /** Get incident report */
+  getIncidentReport(start: string, end: string, categoryId?: number, status?: string, workshopId?: number): Observable<IncidentReport[]> {
+    let params = new HttpParams().set('start_date', start).set('end_date', end);
+    if (categoryId) params = params.set('category_id', categoryId);
+    if (status) params = params.set('status', status);
+    if (workshopId) params = params.set('workshop_id', workshopId);
+    
+    return this.http.get<any>(`${this.baseUrl}/reports/incidents`, { params }).pipe(map(res => res.data));
   }
 
-  /**
-   * Get incidents grouped by category
-   */
-  getIncidentsByCategory(): Observable<{ data: CategoryMetrics[] }> {
-    return this.http.get<{ data: CategoryMetrics[] }>(`${this.baseUrl}/incidents/by-category`);
+  /** Get financial report */
+  getFinancialReport(start: string, end: string, workshopId?: number): Observable<FinancialReport> {
+    let params = new HttpParams().set('start_date', start).set('end_date', end);
+    if (workshopId) params = params.set('workshop_id', workshopId);
+    
+    return this.http.get<any>(`${this.baseUrl}/reports/financial`, { params }).pipe(map(res => res.data));
   }
 
-  /**
-   * Get response time time series
-   */
-  getResponseTimeSeries(days = 30, workshopId?: number): Observable<{ data: TimeSeriesDataPoint[] }> {
-    let params = `?days=${days}`;
-    if (workshopId) params += `&workshop_id=${workshopId}`;
-    return this.http.get<{ data: TimeSeriesDataPoint[] }>(`${this.timeSeriesUrl}/response-time${params}`);
+  /** Get performance report */
+  getPerformanceReport(start?: string, end?: string, workshopId?: number): Observable<PerformanceReport[]> {
+    let params = new HttpParams();
+    if (start) params = params.set('start_date', start);
+    if (end) params = params.set('end_date', end);
+    if (workshopId) params = params.set('workshop_id', workshopId);
+    
+    return this.http.get<any>(`${this.baseUrl}/reports/performance`, { params }).pipe(map(res => res.data));
   }
 
-  /**
-   * Get resolution time time series
-   */
-  getResolutionTimeSeries(days = 30, workshopId?: number): Observable<{ data: TimeSeriesDataPoint[] }> {
-    let params = `?days=${days}`;
-    if (workshopId) params += `&workshop_id=${workshopId}`;
-    return this.http.get<{ data: TimeSeriesDataPoint[] }>(`${this.timeSeriesUrl}/resolution-time${params}`);
+  /** Export report to PDF or Excel */
+  exportReport(type: 'incident' | 'financial' | 'performance', format: 'pdf' | 'excel', start: string, end: string, workshopId?: number): void {
+    let params = new HttpParams()
+      .set('report_type', type)
+      .set('start_date', start)
+      .set('end_date', end);
+    
+    if (workshopId) params = params.set('workshop_id', workshopId);
+
+    const url = `${this.baseUrl}/reports/export/${format}`;
+    
+    this.http.get(url, { params, responseType: 'blob' }).subscribe({
+      next: (blob) => {
+        const fileName = `report_${type}_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+        const objectUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = fileName;
+        a.click();
+        window.URL.revokeObjectURL(objectUrl);
+      },
+      error: (err) => console.error('Export failed:', err)
+    });
   }
 
-  /**
-   * Get incidents count time series
-   */
-  getIncidentsCountSeries(days = 30, workshopId?: number, status?: string): Observable<{ data: TimeSeriesDataPoint[] }> {
-    let params = `?days=${days}`;
-    if (workshopId) params += `&workshop_id=${workshopId}`;
-    if (status) params += `&status=${status}`;
-    return this.http.get<{ data: TimeSeriesDataPoint[] }>(`${this.timeSeriesUrl}/incidents-count${params}`);
+  // Legacy methods restored for existing dashboard
+  getIncidentsByCategory(start?: string, end?: string): Observable<any> {
+    let params = new HttpParams();
+    if (start) params = params.set('start_date', start);
+    if (end) params = params.set('end_date', end);
+    return this.http.get<any>(`${this.baseUrl}/incidents/by-category`, { params }).pipe(map(res => res.data));
   }
 
-  /**
-   * Get technician performance
-   */
-  getTechnicianPerformance(workshopId: number, days = 30, limit = 10): Observable<{ data: TechnicianPerformance[] }> {
-    return this.http.get<{ data: TechnicianPerformance[] }>(
-      `${this.timeSeriesUrl}/technician-performance?workshop_id=${workshopId}&days=${days}&limit=${limit}`
-    );
+  getResponseTimeSeries(days: number = 30): Observable<any> {
+    const params = new HttpParams().set('days', days.toString());
+    return this.http.get<any>(`${this.baseUrl}/timeseries/response-time`, { params });
   }
 
-  /**
-   * Get hourly distribution
-   */
-  getHourlyDistribution(days = 30, workshopId?: number): Observable<{ data: any[] }> {
-    let params = `?days=${days}`;
-    if (workshopId) params += `&workshop_id=${workshopId}`;
-    return this.http.get<{ data: any[] }>(`${this.timeSeriesUrl}/hourly-distribution${params}`);
+  getTechnicianPerformance(workshopId: number, days: number = 30): Observable<any> {
+    const params = new HttpParams()
+      .set('workshop_id', workshopId.toString())
+      .set('days', days.toString());
+    return this.http.get<any>(`${this.baseUrl}/timeseries/technician-performance`, { params });
   }
 }

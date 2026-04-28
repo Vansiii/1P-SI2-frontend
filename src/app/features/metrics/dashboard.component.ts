@@ -574,7 +574,7 @@ export class MetricsDashboardComponent implements OnInit, OnDestroy {
         this.systemMetrics = response.data;
         this.isLoading = false;
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading system metrics:', error);
         this.isLoading = false;
       }
@@ -586,7 +586,7 @@ export class MetricsDashboardComponent implements OnInit, OnDestroy {
         this.categoryMetrics = response.data;
         this.updateCategoryChart();
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading category metrics:', error);
       }
     });
@@ -596,7 +596,7 @@ export class MetricsDashboardComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.updateResponseTimeChart(response.data);
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading response time series:', error);
       }
     });
@@ -608,7 +608,7 @@ export class MetricsDashboardComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.updateTechniciansChart(response.data);
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading technician performance:', error);
       }
     });
