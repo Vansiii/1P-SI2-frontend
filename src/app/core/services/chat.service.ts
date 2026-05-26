@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, BehaviorSubject, Subject } from 'rxjs';
+import { tap } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
-import { Message, Conversation, SendMessageRequest } from '../models/chat.model';
+import { Message, MessageStatus, Conversation, SendMessageRequest } from '../models/chat.model';
 import { WebSocketService } from './websocket.service';
 
 @Injectable({
@@ -13,28 +14,22 @@ export class ChatService {
   private readonly wsService = inject(WebSocketService);
   private readonly apiUrl = `${environment.apiUrl}/chat`;
 
-  // Stream de mensajes nuevos en tiempo real
   private newMessageSubject = new Subject<Message>();
   public newMessage$ = this.newMessageSubject.asObservable();
 
-  // Estado de mensajes por incidente
   private messagesCache = new Map<number, BehaviorSubject<Message[]>>();
 
-  // Estado de contador de no leídos
   private unreadCountSubject = new BehaviorSubject<Map<number, number>>(new Map());
   public unreadCount$ = this.unreadCountSubject.asObservable();
 
-  // Typing indicators: Map<incident_id, user_names[]>
   private typingUsersSubject = new BehaviorSubject<Map<number, string[]>>(new Map());
   public typingUsers$: Observable<Map<number, string[]>> = this.typingUsersSubject.asObservable();
+  private typingUsersById = new Map<number, Map<number, string>>();
 
   constructor() {
     this.subscribeToWebSocket();
   }
 
-  /**
-   * Suscribirse a eventos WebSocket para mensajes en tiempo real
-   */
   private subscribeToWebSocket(): void {
     this.wsService.messages$.subscribe(message => {
       switch (message.type) {
@@ -45,15 +40,20 @@ export class ChatService {
           this.handleNewChatMessage(message.data);
           break;
         case 'chat.message_sent':
-          // Handle RealTimeEvent format from OutboxProcessor
           this.handleChatMessageSent(message.data);
           break;
+        case 'chat.user_typing':
         case 'user_typing':
           this.handleUserTyping(message.data);
           break;
+        case 'chat.user_stopped_typing':
         case 'user_stopped_typing':
           this.handleUserStoppedTyping(message.data);
           break;
+        case 'chat.message_delivered':
+          this.handleMessageDelivered(message.data);
+          break;
+        case 'chat.message_read':
         case 'message_read':
           this.handleMessageRead(message.data);
           break;
@@ -61,78 +61,142 @@ export class ChatService {
     });
   }
 
-  /**
-   * Send typing_start event to the server for a given incident
-   */
   public sendTypingStart(incidentId: number): void {
-    this.wsService.send({ type: 'typing_start', incident_id: incidentId });
+    this.sendTypingIndicatorHTTP(incidentId).subscribe({
+      error: () => {
+        this.wsService.send({ type: 'typing_start', incident_id: incidentId });
+      }
+    });
   }
 
-  /**
-   * Send typing_stop event to the server for a given incident
-   */
   public sendTypingStop(incidentId: number): void {
-    this.wsService.send({ type: 'typing_stop', incident_id: incidentId });
+    this.sendTypingStopIndicatorHTTP(incidentId).subscribe({
+      error: () => {
+        this.wsService.send({ type: 'typing_stop', incident_id: incidentId });
+      }
+    });
   }
 
-  /**
-   * Handle user_typing event: add user_name to the typing map for that incident
-   */
   private handleUserTyping(data: any): void {
     try {
-      const { incident_id, user_name } = data;
-      if (!incident_id || !user_name) return;
+      const incidentId = this.toNumber(data?.incident_id);
+      const userId = this.toNumber(data?.user_id);
+      const rawName = typeof data?.user_name === 'string' ? data.user_name.trim() : '';
+      if (!incidentId) return;
+
+      const userName = rawName || this.resolveUserName(incidentId, userId) || (userId !== null ? `Usuario ${userId}` : null);
+      if (!userName) return;
 
       const current = new Map(this.typingUsersSubject.value);
-      const names = current.get(incident_id) ?? [];
-      if (!names.includes(user_name)) {
-        current.set(incident_id, [...names, user_name]);
+      const names = current.get(incidentId) ?? [];
+      if (!names.includes(userName)) {
+        current.set(incidentId, [...names, userName]);
         this.typingUsersSubject.next(current);
+      }
+
+      if (userId !== null) {
+        const byId = new Map(this.typingUsersById.get(incidentId) ?? new Map<number, string>());
+        byId.set(userId, userName);
+        this.typingUsersById.set(incidentId, byId);
       }
     } catch (error) {
       console.error('Error handling user_typing event:', error);
     }
   }
 
-  /**
-   * Handle user_stopped_typing event: remove user_name from the typing map
-   */
   private handleUserStoppedTyping(data: any): void {
     try {
-      const { incident_id, user_name } = data;
-      if (!incident_id || !user_name) return;
+      const incidentId = this.toNumber(data?.incident_id);
+      const userId = this.toNumber(data?.user_id);
+      const rawName = typeof data?.user_name === 'string' ? data.user_name.trim() : '';
+      if (!incidentId) return;
+
+      const byId = this.typingUsersById.get(incidentId) ?? new Map<number, string>();
+      const userName = rawName || (userId !== null ? byId.get(userId) : undefined) || this.resolveUserName(incidentId, userId);
 
       const current = new Map(this.typingUsersSubject.value);
-      const names = (current.get(incident_id) ?? []).filter(n => n !== user_name);
+      const currentNames = current.get(incidentId) ?? [];
+      const names = userName
+        ? currentNames.filter(n => n !== userName)
+        : [];
       if (names.length === 0) {
-        current.delete(incident_id);
+        current.delete(incidentId);
       } else {
-        current.set(incident_id, names);
+        current.set(incidentId, names);
       }
       this.typingUsersSubject.next(current);
+
+      if (userId !== null && byId.has(userId)) {
+        const updatedById = new Map(byId);
+        updatedById.delete(userId);
+        if (updatedById.size === 0) {
+          this.typingUsersById.delete(incidentId);
+        } else {
+          this.typingUsersById.set(incidentId, updatedById);
+        }
+      }
     } catch (error) {
       console.error('Error handling user_stopped_typing event:', error);
     }
   }
 
-  /**
-   * Handle message_read event: update is_read on messages in the cache
-   * for messages NOT sent by the reader (i.e. messages the reader just read)
-   */
-  private handleMessageRead(data: any): void {
+  private handleMessageDelivered(data: any): void {
     try {
-      const { incident_id, read_by_user_id } = data;
-      if (!incident_id || !read_by_user_id) return;
+      const incidentIdFromPayload = this.toNumber(data?.incident_id);
+      const messageId = this.toNumber(data?.message_id);
+      const incidentId = incidentIdFromPayload ?? this.findIncidentIdByMessageId(messageId);
+      if (!incidentId || messageId === null) return;
 
-      const messagesSubject = this.messagesCache.get(incident_id);
+      const messagesSubject = this.messagesCache.get(incidentId);
       if (!messagesSubject) return;
 
-      const updated = messagesSubject.value.map(msg => {
-        // Mark as read all messages NOT sent by the reader
-        if (msg.sender_id !== read_by_user_id && !msg.is_read) {
-          return { ...msg, is_read: true };
-        }
-        return msg;
+      const deliveredAt = data?.delivered_at
+        ? this.normalizeTimestamp(String(data.delivered_at))
+        : undefined;
+
+      const updated = messagesSubject.value.map((message) => {
+        if (Number(message.id) !== messageId) return message;
+        return {
+          ...message,
+          status: (message.is_read ? 'read' : 'delivered') as MessageStatus,
+          updated_at: deliveredAt ?? message.updated_at
+        };
+      });
+
+      messagesSubject.next(updated);
+    } catch (error) {
+      console.error('Error handling message_delivered event:', error);
+    }
+  }
+
+  private handleMessageRead(data: any): void {
+    try {
+      const incidentIdFromPayload = this.toNumber(data?.incident_id);
+      const messageId = this.toNumber(data?.message_id);
+      const incidentId = incidentIdFromPayload ?? this.findIncidentIdByMessageId(messageId);
+      const readByUserId = this.toNumber(data?.read_by_user_id ?? data?.read_by);
+      if (!incidentId || readByUserId === null) return;
+
+      const messagesSubject = this.messagesCache.get(incidentId);
+      if (!messagesSubject) return;
+
+      const readAt = data?.read_at
+        ? this.normalizeTimestamp(String(data.read_at))
+        : undefined;
+
+      const updated = messagesSubject.value.map((message) => {
+        const mustUpdate = messageId !== null
+          ? Number(message.id) === messageId
+          : (message.sender_id !== readByUserId && !message.is_read);
+
+        if (!mustUpdate) return message;
+
+        return {
+          ...message,
+          is_read: true,
+          read_at: readAt ?? message.read_at,
+          status: 'read' as MessageStatus
+        };
       });
 
       messagesSubject.next(updated);
@@ -141,136 +205,84 @@ export class ChatService {
     }
   }
 
-  /**
-   * Manejar nuevo mensaje recibido por WebSocket (formato antiguo)
-   */
   private handleNewMessage(data: any): void {
     try {
-      const message: Message = {
-        id: data.id,
-        incident_id: data.incident_id,
-        sender_id: data.sender_id,
-        sender_name: data.sender_name,
-        message: data.message,
-        message_type: data.type || data.message_type || 'text',
-        is_read: data.is_read || false,
-        created_at: data.created_at
-      };
-
+      const message = this.normalizeMessage(data);
+      if (!message) return;
       this.processNewMessage(message);
     } catch (error) {
       console.error('Error handling new message:', error);
     }
   }
 
-  /**
-   * Manejar nuevo mensaje de chat recibido por WebSocket (formato nuevo)
-   */
   private handleNewChatMessage(data: any): void {
     try {
-      const message: Message = {
-        id: data.id,
-        incident_id: data.incident_id,
-        sender_id: data.sender_id,
-        sender_name: data.sender_name,
-        sender_role: data.sender_role,
-        message: data.message,
-        message_type: data.message_type || 'text',
-        is_read: data.is_read || false,
-        read_at: data.read_at,
-        created_at: data.created_at,
-        updated_at: data.updated_at
-      };
-
+      const message = this.normalizeMessage(data);
+      if (!message) return;
       this.processNewMessage(message);
-      
-      console.log(`💬 New chat message received for incident ${message.incident_id} from ${message.sender_name}`);
     } catch (error) {
       console.error('Error handling new chat message:', error);
     }
   }
 
-  /**
-   * Handle chat.message_sent event from OutboxProcessor (RealTimeEvent format)
-   */
   private handleChatMessageSent(data: any): void {
     try {
-      console.log('📨 Handling chat.message_sent event:', data);
-      
-      const message: Message = {
-        id: data.message_id,
-        incident_id: data.incident_id,
-        sender_id: data.sender_id,
-        sender_name: data.sender_name,
-        sender_role: data.sender_role,
-        message: data.content,
-        message_type: 'text',
-        is_read: false,
-        read_at: undefined,
-        created_at: data.sent_at || new Date().toISOString(),
-        updated_at: undefined
-      };
-
+      const message = this.normalizeMessage(data);
+      if (!message) return;
       this.processNewMessage(message);
-      
-      console.log(`💬 Chat message processed for incident ${message.incident_id} from ${message.sender_name}`);
     } catch (error) {
       console.error('Error handling chat.message_sent event:', error, data);
     }
   }
 
-  /**
-   * Procesar nuevo mensaje (común para ambos formatos)
-   */
   private processNewMessage(message: Message): void {
-    // Emitir mensaje nuevo
     this.newMessageSubject.next(message);
 
-    // Actualizar cache de mensajes - crear cache si no existe
     let messagesSubject = this.messagesCache.get(message.incident_id);
     if (!messagesSubject) {
-      console.log(`📦 Creating cache for incident ${message.incident_id} on-demand`);
       messagesSubject = new BehaviorSubject<Message[]>([]);
       this.messagesCache.set(message.incident_id, messagesSubject);
     }
 
     const currentMessages = messagesSubject.value;
-    // Evitar duplicados
-    if (!currentMessages.some(m => m.id === message.id)) {
-      // Agregar al final (orden cronológico)
-      const updatedMessages = [...currentMessages, message];
-      console.log(`📦 Updating cache for incident ${message.incident_id}: ${currentMessages.length} -> ${updatedMessages.length} messages`);
-      messagesSubject.next(updatedMessages);
-    } else {
-      console.log(`⚠️ Duplicate message ${message.id} for incident ${message.incident_id}, skipping`);
-    }
+    const existingIndex = currentMessages.findIndex(m => Number(m.id) === Number(message.id));
+    const isNewMessage = existingIndex === -1;
 
-    // Actualizar contador de no leídos
-    this.incrementUnreadCount(message.incident_id);
+    const mergedMessages = isNewMessage
+      ? [...currentMessages, message]
+      : currentMessages.map((m, index) => (
+          index === existingIndex ? { ...m, ...message } : m
+        ));
+
+    const updatedMessages = [...mergedMessages].sort(
+      (a, b) => this.toDate(a.created_at).getTime() - this.toDate(b.created_at).getTime()
+    );
+
+    messagesSubject.next(updatedMessages);
+
+    if (isNewMessage) {
+      this.incrementUnreadCount(message.incident_id);
+    }
   }
 
-  /**
-   * Obtener observable de mensajes para un incidente específico
-   */
   public getMessagesObservable(incidentId: number): Observable<Message[]> {
     if (!this.messagesCache.has(incidentId)) {
       this.messagesCache.set(incidentId, new BehaviorSubject<Message[]>([]));
-      // Cargar mensajes iniciales
       this.loadMessagesForIncident(incidentId);
     }
     return this.messagesCache.get(incidentId)!.asObservable();
   }
 
-  /**
-   * Cargar mensajes iniciales para un incidente
-   */
   private loadMessagesForIncident(incidentId: number): void {
     this.getMessages(incidentId).subscribe({
       next: (messages) => {
         const messagesSubject = this.messagesCache.get(incidentId);
-        if (messagesSubject) {
-          messagesSubject.next(messages);
-        }
+        if (!messagesSubject) return;
+
+        const normalized = messages
+          .map((message) => this.normalizeMessage(message))
+          .filter((message): message is Message => !!message);
+        messagesSubject.next(normalized);
       },
       error: (error) => {
         console.error(`Error loading messages for incident ${incidentId}:`, error);
@@ -278,9 +290,6 @@ export class ChatService {
     });
   }
 
-  /**
-   * Incrementar contador de no leídos
-   */
   private incrementUnreadCount(incidentId: number): void {
     const currentCounts = this.unreadCountSubject.value;
     const currentCount = currentCounts.get(incidentId) || 0;
@@ -288,25 +297,16 @@ export class ChatService {
     this.unreadCountSubject.next(new Map(currentCounts));
   }
 
-  /**
-   * Resetear contador de no leídos
-   */
   public resetUnreadCount(incidentId: number): void {
     const currentCounts = this.unreadCountSubject.value;
     currentCounts.set(incidentId, 0);
     this.unreadCountSubject.next(new Map(currentCounts));
   }
 
-  /**
-   * Get or create conversation for an incident
-   */
   getIncidentConversation(incidentId: number): Observable<Conversation> {
     return this.http.get<Conversation>(`${this.apiUrl}/incidents/${incidentId}/conversation`);
   }
 
-  /**
-   * Get messages for an incident
-   */
   getMessages(
     incidentId: number,
     limit = 50,
@@ -320,16 +320,19 @@ export class ChatService {
     return this.http.get<Message[]>(`${this.apiUrl}/incidents/${incidentId}/messages`, { params });
   }
 
-  /**
-   * Send a message in an incident conversation
-   */
   sendMessage(incidentId: number, request: SendMessageRequest): Observable<Message> {
-    return this.http.post<Message>(`${this.apiUrl}/incidents/${incidentId}/messages`, request);
+    return this.http.post<Message>(`${this.apiUrl}/incidents/${incidentId}/messages`, request).pipe(
+      tap((response) => {
+        // Ensure own sent messages are present in cache so delivered/read WS events
+        // can update their status in real time without waiting for a full reload.
+        const normalized = this.normalizeMessage(response);
+        if (normalized) {
+          this.upsertMessageInCache(normalized);
+        }
+      })
+    );
   }
 
-  /**
-   * Mark messages as read
-   */
   markMessagesAsRead(incidentId: number): Observable<{ marked_count: number }> {
     return this.http.post<{ marked_count: number }>(
       `${this.apiUrl}/incidents/${incidentId}/messages/mark-read`,
@@ -337,47 +340,122 @@ export class ChatService {
     );
   }
 
-  /**
-   * Get unread count for an incident
-   */
   getUnreadCount(incidentId: number): Observable<{ unread_count: number }> {
     return this.http.get<{ unread_count: number }>(
       `${this.apiUrl}/incidents/${incidentId}/unread-count`
     );
   }
 
-  /**
-   * Get all conversations for current user
-   */
   getUserConversations(limit = 20): Observable<Conversation[]> {
     return this.http.get<Conversation[]>(`${this.apiUrl}/conversations`, { params: { limit } });
   }
 
-  /**
-   * Delete a message
-   */
   deleteMessage(messageId: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/messages/${messageId}`);
   }
 
-  /**
-   * Send typing indicator to server (HTTP endpoint)
-   */
   sendTypingIndicatorHTTP(incidentId: number): Observable<void> {
     return this.http.post<void>(`${this.apiUrl}/incidents/${incidentId}/typing`, {});
   }
 
-  /**
-   * Send typing stop indicator to server (HTTP endpoint)
-   */
   sendTypingStopIndicatorHTTP(incidentId: number): Observable<void> {
     return this.http.post<void>(`${this.apiUrl}/incidents/${incidentId}/typing/stop`, {});
   }
 
-  /**
-   * Mark a specific message as read (for read receipts)
-   */
   markMessageAsRead(messageId: number): Observable<{ read_at: string }> {
     return this.http.post<{ read_at: string }>(`${this.apiUrl}/messages/${messageId}/read`, {});
+  }
+
+  private toNumber(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private normalizeMessage(data: any): Message | null {
+    if (!data) return null;
+
+    const id = this.toNumber(data.id ?? data.message_id);
+    const incidentId = this.toNumber(data.incident_id);
+    const senderId = this.toNumber(data.sender_id ?? data.senderId);
+    const content = data.message ?? data.content ?? data.text;
+
+    if (!id || !incidentId || senderId === null || !content) {
+      return null;
+    }
+
+    return {
+      id,
+      incident_id: incidentId,
+      sender_id: senderId,
+      sender_name: data.sender_name,
+      sender_role: data.sender_role,
+      message: String(content),
+      message_type: data.message_type || 'text',
+      is_read: Boolean(data.is_read),
+      read_at: data.read_at,
+      created_at: this.normalizeTimestamp(data.created_at || data.sent_at || new Date().toISOString()),
+      updated_at: data.updated_at,
+      status: (data.read_at || data.is_read
+        ? 'read'
+        : (data.delivered_at ? 'delivered' : 'sent')) as MessageStatus
+    };
+  }
+
+  private findIncidentIdByMessageId(messageId: number | null): number | null {
+    if (messageId === null) return null;
+    for (const [incidentId, subject] of this.messagesCache.entries()) {
+      if (subject.value.some((message) => Number(message.id) === messageId)) {
+        return incidentId;
+      }
+    }
+    return null;
+  }
+
+  private resolveUserName(incidentId: number, userId: number | null): string | null {
+    if (userId === null) return null;
+    const messages = this.messagesCache.get(incidentId)?.value ?? [];
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (Number(message.sender_id) === userId && message.sender_name) {
+        return message.sender_name;
+      }
+    }
+    return null;
+  }
+
+  private toDate(value: string): Date {
+    const normalized = this.normalizeTimestamp(value);
+    return new Date(normalized);
+  }
+
+  private normalizeTimestamp(value: string): string {
+    const timestamp = String(value ?? '').trim();
+    if (!timestamp) return new Date().toISOString();
+
+    const hasTimezone = /([zZ]|[+\-]\d{2}:\d{2})$/.test(timestamp);
+    if (hasTimezone) return timestamp;
+    return `${timestamp}Z`;
+  }
+
+  private upsertMessageInCache(message: Message): void {
+    let messagesSubject = this.messagesCache.get(message.incident_id);
+    if (!messagesSubject) {
+      messagesSubject = new BehaviorSubject<Message[]>([]);
+      this.messagesCache.set(message.incident_id, messagesSubject);
+    }
+
+    const currentMessages = messagesSubject.value;
+    const existingIndex = currentMessages.findIndex(m => Number(m.id) === Number(message.id));
+    const mergedMessages = existingIndex === -1
+      ? [...currentMessages, message]
+      : currentMessages.map((m, index) => (
+          index === existingIndex ? { ...m, ...message } : m
+        ));
+
+    const sorted = [...mergedMessages].sort(
+      (a, b) => this.toDate(a.created_at).getTime() - this.toDate(b.created_at).getTime()
+    );
+
+    messagesSubject.next(sorted);
   }
 }

@@ -50,18 +50,18 @@ import { Message } from '../../core/models/chat.model';
           
           <div *cdkVirtualFor="let message of messages; trackBy: trackByMessageId" 
                class="message-wrapper"
-               [class.message-me]="message.sender_id === currentUserId"
-               [class.message-other]="message.sender_id !== currentUserId">
+               [class.message-me]="isOwnMessage(message)"
+               [class.message-other]="!isOwnMessage(message)">
             
             <div class="message-bubble">
-              <div *ngIf="message.sender_id !== currentUserId" class="message-sender">
+              <div *ngIf="!isOwnMessage(message)" class="message-sender">
                 {{ message.sender_name }}
               </div>
               <div class="message-text">{{ message.message }}</div>
               <div class="message-meta">
                 <span class="message-time">{{ formatTime(message.created_at) }}</span>
-                <span *ngIf="message.sender_id === currentUserId" class="message-status">
-                  <i [class]="message.is_read ? 'icon-check-double' : 'icon-check'"></i>
+                <span *ngIf="isOwnMessage(message)" class="message-status">
+                  <i [class]="getMessageStatusIconClass(message)"></i>
                 </span>
               </div>
             </div>
@@ -72,6 +72,7 @@ import { Message } from '../../core/models/chat.model';
             <span></span>
             <span></span>
             <span></span>
+            <span class="typing-label">escribiendo</span>
           </div>
         </cdk-virtual-scroll-viewport>
       </div>
@@ -251,6 +252,7 @@ import { Message } from '../../core/models/chat.model';
 
     .typing-indicator {
       display: flex;
+      align-items: center;
       gap: 4px;
       padding: 12px 16px;
       background: white;
@@ -273,6 +275,18 @@ import { Message } from '../../core/models/chat.model';
 
     .typing-indicator span:nth-child(3) {
       animation-delay: 0.4s;
+    }
+
+    .typing-label {
+      width: auto !important;
+      height: auto !important;
+      background: transparent !important;
+      border-radius: 0 !important;
+      animation: none !important;
+      color: #6b7280;
+      font-size: 12px;
+      font-weight: 500;
+      margin-left: 4px;
     }
 
     @keyframes typing {
@@ -427,28 +441,42 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     if (!this.wsService.isConnected()) {
       this.wsService.connect(this.incidentId);
     }
-    
-    // Unirse al room del incidente
-    this.wsService.joinIncidentRoom(this.incidentId);
+
+    this.ensureIncidentRoomJoined(this.incidentId);
+  }
+
+  private ensureIncidentRoomJoined(incidentId: number): void {
+    const tryJoin = () => this.wsService.joinIncidentRoom(incidentId);
+    tryJoin();
+    setTimeout(tryJoin, 300);
+    setTimeout(tryJoin, 1000);
+    setTimeout(tryJoin, 3000);
   }
 
   subscribeToMessages(): void {
-    // Suscribirse al observable de mensajes del cache (se actualiza automáticamente)
     this.chatService.getMessagesObservable(this.incidentId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((messages: Message[]) => {
-        console.log(`📬 Chat component received ${messages.length} messages from cache for incident ${this.incidentId}`);
         const previousLength = this.messages.length;
-        this.messages = messages;
-        
-        // Si hay nuevos mensajes, hacer scroll y marcar como leído
-        if (messages.length > previousLength) {
-          console.log(`✨ New messages detected: ${previousLength} -> ${messages.length}`);
+
+        const mergedById = new Map<number, Message>(
+          this.messages.map((message) => [Number(message.id), message]),
+        );
+        for (const message of messages) {
+          mergedById.set(Number(message.id), message);
+        }
+
+        const mergedMessages = Array.from(mergedById.values()).sort(
+          (a, b) => this.parseServerDate(a.created_at).getTime() - this.parseServerDate(b.created_at).getTime()
+        );
+
+        const addedCount = mergedMessages.length - previousLength;
+        this.messages = mergedMessages;
+
+        if (addedCount > 0) {
           this.shouldScrollToBottom = true;
-          
-          // Marcar como leído si el último mensaje no es del usuario actual
-          const lastMessage = messages[messages.length - 1];
-          if (lastMessage && lastMessage.sender_id !== this.currentUserId) {
+          const lastMessage = mergedMessages[mergedMessages.length - 1];
+          if (lastMessage && Number(lastMessage.sender_id) !== Number(this.currentUserId)) {
             this.markAsRead();
           }
         }
@@ -515,9 +543,19 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     this.chatService.sendMessage(this.incidentId, { message: text }).subscribe({
       next: (message: Message) => {
-        this.messages.push(message);
+        const normalizedMessage: Message = {
+          ...message,
+          id: Number(message.id),
+          incident_id: Number(message.incident_id),
+          sender_id: Number(message.sender_id)
+        };
+        // 🔧 FIX: Verificar que el mensaje no exista antes de agregarlo
+        const exists = this.messages.some(m => Number(m.id) === Number(normalizedMessage.id));
+        if (!exists) {
+          this.messages = [...this.messages, normalizedMessage];
+          this.shouldScrollToBottom = true;
+        }
         this.isSending = false;
-        this.shouldScrollToBottom = true;
       },
       error: (error: any) => {
         console.error('Error sending message:', error);
@@ -554,8 +592,22 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     return message.id;
   }
 
+  isOwnMessage(message: Message): boolean {
+    return Number(message.sender_id) === Number(this.currentUserId);
+  }
+
+  getMessageStatusIconClass(message: Message): string {
+    if (message.is_read || message.status === 'read') {
+      return 'icon-check-double';
+    }
+    if (message.status === 'delivered') {
+      return 'icon-check-double';
+    }
+    return 'icon-check';
+  }
+
   formatTime(dateString: string): string {
-    const date = new Date(dateString);
+    const date = this.parseServerDate(dateString);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -569,6 +621,13 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     } else {
       return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
+  }
+
+  private parseServerDate(timestamp: string): Date {
+    const raw = String(timestamp ?? '').trim();
+    if (!raw) return new Date();
+    const hasTimezone = /([zZ]|[+\-]\d{2}:\d{2})$/.test(raw);
+    return new Date(hasTimezone ? raw : `${raw}Z`);
   }
 
   toggleEmojiPicker(): void {

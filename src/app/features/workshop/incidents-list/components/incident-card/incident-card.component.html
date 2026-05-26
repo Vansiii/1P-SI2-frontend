@@ -1,93 +1,46 @@
-<div class="incident-card">
-  <!-- Timeout Badge (top-right corner) -->
-  @if (hasTimeout()) {
-    <div 
-      class="timeout-badge"
-      [appTooltip]="timeoutTooltip()"
-      tooltipPosition="top"
-    >
-      <span class="timeout-icon">⏰</span>
-      <span class="timeout-text">TIMEOUT</span>
+<article class="incident-card" tabindex="0" role="button" [attr.aria-label]="'Incidente ' + incidentId() + ', ' + statusLabel()">
+  <header class="card-header">
+    <div class="header-left">
+      <span class="incident-id">#{{ incidentId() }}</span>
+      <span class="status-badge" [ngClass]="statusBadgeClass()">{{ statusLabel() }}</span>
+    </div>
+    @if (hasTimeout()) {
+      <div class="timeout-indicator">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 6v6l4 2"/>
+        </svg>
+        TIMEOUT
+      </div>
+    }
+  </header>
+
+  <p class="description">{{ truncatedDescription() }}</p>
+
+  @if (locationText() && locationText() !== 'Sin ubicación') {
+    <div class="location">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+        <circle cx="12" cy="10" r="3"/>
+      </svg>
+      <span>{{ locationText() }}</span>
     </div>
   }
 
-  <!-- Card Header -->
-  <div class="card-header">
-    <div class="incident-id">
-      <span class="id-label">#{{ incident().id }}</span>
-    </div>
-    <div 
-      class="priority-badge" 
-      [style.background-color]="priorityColor()"
-      [appTooltip]="priorityTooltip()"
-      tooltipPosition="top"
-    >
-      {{ incident().prioridad.toUpperCase() }}
-    </div>
-  </div>
-
-  <!-- Card Body -->
-  <div class="card-body">
-    <p class="description">{{ truncatedDescription() }}</p>
-    
-    <div class="metadata">
-      <div class="metadata-item">
-        <span 
-          class="metadata-icon"
-          appTooltip="Categoría del incidente"
-          tooltipPosition="top"
-        >📋</span>
-        <span class="metadata-text">{{ categoryName() }}</span>
-      </div>
-      <div class="metadata-item">
-        <span 
-          class="metadata-icon"
-          appTooltip="Ubicación del incidente"
-          tooltipPosition="top"
-        >📍</span>
-        <span class="metadata-text">{{ locationText() }}</span>
-      </div>
-      <div class="metadata-item">
-        <span 
-          class="metadata-icon"
-          appTooltip="Fecha y hora de creación"
-          tooltipPosition="top"
-        >📅</span>
-        <span class="metadata-text">{{ formattedDate() }}</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Card Footer -->
-  <div class="card-footer">
-    <div 
-      class="status-badge" 
-      [style.background-color]="statusColor()"
-      [appTooltip]="statusTooltip()"
-      tooltipPosition="bottom"
-    >
-      {{ incident().estado.replace('_', ' ').toUpperCase() }}
-    </div>
-    
-    @if (!hasTimeout() && timeRemaining() !== null) {
-      <div 
-        class="time-remaining"
-        [appTooltip]="timeoutTooltip()"
-        tooltipPosition="bottom"
-      >
-        <span class="time-icon">⏱️</span>
-        <span class="time-text">{{ timeRemaining() }}m restantes</span>
-      </div>
+  <footer class="card-footer">
+    @if (countdownDisplay(); as countdown) {
+      <span class="countdown-timer" [class.countdown-warning]="!hasPendingTimeout() && hasTimeout()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 6v6l4 2"/>
+        </svg>
+        {{ countdown }}
+      </span>
+    } @else if (hasTimeout()) {
+      <span class="countdown-timer expired">Expirado</span>
+    } @else {
+      <span class="time-elapsed">{{ timeElapsed() }}</span>
     }
-    
-    @if (!hasSuggestedTechnician()) {
-      <div 
-        class="no-assignment-badge"
-        [appTooltip]="noTechnicianTooltip()"
-        tooltipPosition="bottom"
-      >
-        Sin asignación
-      </div>
-    }
-  </div>
-</div>
+    <button class="view-detail-btn" (click)="onViewDetailClick($event)">Ver Detalle</button>
+  </footer>
+</article>

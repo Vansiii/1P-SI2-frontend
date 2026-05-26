@@ -30,16 +30,73 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
   private currentIncidentId: number | null = null;
 
   constructor() {
-    // Subscribe to real-time incident updates
     this.incidentRealtimeService.incidentUpdates$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(update => {
-        // Only process updates for the current incident
-        if (this.currentIncidentId && update.incidentId === this.currentIncidentId) {
-          console.log('🔔 Incident update received in detail view:', update);
-          
-          // Reload incident detail to get updated data
-          this.loadIncidentDetail(this.currentIncidentId);
+        if (!this.currentIncidentId || update.incidentId !== this.currentIncidentId) return;
+        console.log('🔔 Incident update received in detail view:', update);
+
+        const data = update.data;
+
+        switch (update.updateType) {
+          case 'status_changed':
+            if (data?.new_status) {
+              this.incident.update(current =>
+                current ? { ...current, estado_actual: data.new_status } : current
+              );
+            } else {
+              this.loadIncidentDetail(this.currentIncidentId);
+            }
+            break;
+
+          case 'assigned':
+            this.incident.update(current => {
+              if (!current) return current;
+              const patch: Partial<IncidentDetailAdmin> = { estado_actual: 'asignado' };
+              if (data?.workshop_id && data?.workshop_name) {
+                patch.current_workshop = {
+                  id: data.workshop_id,
+                  workshop_name: data.workshop_name,
+                  workshop_phone: data.workshop_phone ?? null,
+                  address: data.address ?? null,
+                };
+              } else if (data?.taller_id || data?.taller?.id) {
+                patch.current_workshop = {
+                  id: data.taller_id ?? data.taller.id,
+                  workshop_name: data.taller?.workshop_name ?? data.workshop_name ?? '',
+                  workshop_phone: data.taller?.workshop_phone ?? null,
+                  address: data.taller?.address ?? null,
+                };
+              }
+              if (data?.assigned_at) {
+                patch.assigned_at = data.assigned_at;
+              }
+              return { ...current, ...patch };
+            });
+            break;
+
+          case 'cancelled':
+            this.incident.update(current =>
+              current ? { ...current, estado_actual: 'cancelado' } : current
+            );
+            break;
+
+          default:
+            if (data) {
+              this.incident.update(current => {
+                if (!current) return current;
+                const patch: Partial<IncidentDetailAdmin> = {};
+                if (data.estado_actual) patch.estado_actual = data.estado_actual;
+                if (data.new_status) patch.estado_actual = data.new_status;
+                if (data.prioridad_ia) patch.prioridad_ia = data.prioridad_ia;
+                if (data.categoria_ia) patch.categoria_ia = data.categoria_ia;
+                if (data.resolved_at) patch.resolved_at = data.resolved_at;
+                return Object.keys(patch).length > 0 ? { ...current, ...patch } : current;
+              });
+            } else {
+              this.loadIncidentDetail(this.currentIncidentId);
+            }
+            break;
         }
       });
   }

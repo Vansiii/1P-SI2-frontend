@@ -1,211 +1,167 @@
-import { Component, ChangeDetectionStrategy, input, computed, HostBinding, HostListener, output, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, computed, output, HostBinding, HostListener, inject, signal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Incident, PriorityColors, StatusColors, IncidentPriority, IncidentStatus } from '../../../../../core/models/incident.model';
-import { MemoizationService } from '../../../../../shared/services/memoization.service';
-import { TooltipDirective } from '../../../../../shared/directives/tooltip.directive';
+import { Router } from '@angular/router';
+import { Incident, IncidentPriority, IncidentStatus } from '../../../../../core/models/incident.model';
 
-/**
- * IncidentCardComponent (Dumb Component)
- * 
- * Displays a single incident as a card with:
- * - Priority badge with color coding
- * - Status badge
- * - Timeout indicator when applicable
- * - Time remaining display
- * - Truncated description
- * - Metadata (category, location, date)
- * - Keyboard navigation (Enter/Space to select)
- * 
- * Requirements: 1.1, 1.5, 1.6, 1.7, 1.8, 1.9, 6.2, 6.3, 6.6, 6.11, 6.12, 12.3
- */
 @Component({
   selector: 'app-incident-card',
   standalone: true,
-  imports: [CommonModule, TooltipDirective],
+  imports: [CommonModule],
   templateUrl: './incident-card.component.html',
   styleUrl: './incident-card.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class IncidentCardComponent {
-  // Services
-  private memoizationService = inject(MemoizationService);
-
-  // Input signal
+  private readonly router = inject(Router);
   incident = input.required<Incident>();
+  viewDetail = output<number>();
 
-  // Output signal for card click
-  cardClick = output<number>();
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly tick = signal(0);
 
-  // Computed signals
+  constructor() {
+    const id = setInterval(() => this.tick.set(Date.now()), 1000);
+    this.destroyRef.onDestroy(() => clearInterval(id));
+  }
+
+  @HostBinding('class') get hostClass(): string {
+    return 'incident-card-wrapper';
+  }
+
+  @HostListener('click')
+  @HostListener('keydown.enter', ['$event'])
+  @HostListener('keydown.space', ['$event'])
+  handleClick(event?: Event): void {
+    if (event) {
+      event.preventDefault();
+    }
+    this.router.navigate(['/workshop/incidents', this.incident().id]);
+  }
+
+  onViewDetailClick(event: Event): void {
+    event.stopPropagation();
+    this.viewDetail.emit(this.incident().id);
+  }
+
+  incidentId = computed(() => this.incident().id);
+
+  private getIncidentStatus(): IncidentStatus {
+    const incident = this.incident() as Incident & { estado_actual?: IncidentStatus };
+    return (incident.estado_actual || incident.estado || 'pendiente') as IncidentStatus;
+  }
+
+  statusLabel = computed(() => {
+    const status = this.getIncidentStatus();
+    const labels: Record<string, string> = {
+      pendiente: 'Pendiente',
+      asignado: 'Asignado',
+      aceptado: 'Aceptado',
+      en_camino: 'En Camino',
+      en_proceso: 'En Proceso',
+      resuelto: 'Resuelto',
+      cancelado: 'Cancelado',
+      sin_taller_disponible: 'Sin Taller'
+    };
+    return labels[status] || status;
+  });
+
   hasTimeout = computed(() => {
+    this.tick();
     const inc = this.incident();
+    if (this.getIncidentStatus() !== 'pendiente') return false;
     if (!inc.suggested_technician?.timeout_at) return false;
     return new Date(inc.suggested_technician.timeout_at) < new Date();
   });
 
-  isHighPriority = computed(() => {
-    return this.incident().prioridad === 'alta';
-  });
-
-  timeRemaining = computed(() => {
+  hasPendingTimeout = computed(() => {
+    this.tick();
     const inc = this.incident();
+    if (this.getIncidentStatus() !== 'pendiente') return false;
+    if (!inc.suggested_technician?.timeout_at) return false;
+    const timeoutDate = new Date(inc.suggested_technician.timeout_at);
+    return timeoutDate.getTime() > Date.now();
+  });
+
+  countdownDisplay = computed(() => {
+    this.tick();
+    const inc = this.incident();
+    if (this.getIncidentStatus() !== 'pendiente') return null;
     if (!inc.suggested_technician?.timeout_at) return null;
-    
-    // Use memoization for expensive time calculations
-    const memoizedCalculateTime = this.memoizationService.memoize(
-      `time-remaining-${inc.id}`,
-      (timeoutAt: string) => {
-        const timeoutDate = new Date(timeoutAt);
-        const now = new Date();
-        const diffMs = timeoutDate.getTime() - now.getTime();
-        
-        if (diffMs <= 0) return null;
-        
-        return Math.floor(diffMs / 60000); // Convert to minutes
-      },
-      { maxSize: 10, ttlMs: 5000 } // Cache for 5 seconds (time calculations need frequent updates)
-    );
-
-    return memoizedCalculateTime(inc.suggested_technician.timeout_at);
+    const timeoutDate = new Date(inc.suggested_technician.timeout_at);
+    const diffMs = timeoutDate.getTime() - Date.now();
+    if (diffMs <= 0) return null;
+    const mins = Math.floor(diffMs / 60000);
+    const secs = Math.floor((diffMs % 60000) / 1000);
+    if (mins >= 60) {
+      const hours = Math.floor(mins / 60);
+      const remMins = mins % 60;
+      return `${hours}h ${remMins}m ${secs}s`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   });
 
-  priorityClass = computed(() => {
-    const priority = this.incident().prioridad;
-    return `priority-${priority}`;
-  });
+  timeElapsed = computed(() => {
+    this.tick();
+    const createdAt = this.incident().created_at;
+    const date = new Date(createdAt);
+    const diffMs = Date.now() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
 
-  statusClass = computed(() => {
-    const status = this.incident().estado;
-    return `status-${status.replace(/_/g, '-')}`;
-  });
+    if (diffMins < 1) return 'Ahora';
+    if (diffMins < 60) return `Hace ${diffMins}m`;
+    if (diffHours < 24) return `Hace ${diffHours}h`;
+    if (diffDays < 7) return `Hace ${diffDays}d`;
 
-  priorityColor = computed(() => {
-    return PriorityColors[this.incident().prioridad];
-  });
-
-  statusColor = computed(() => {
-    return StatusColors[this.incident().estado];
+    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   });
 
   truncatedDescription = computed(() => {
-    const desc = this.incident().descripcion;
+    const desc = this.incident().descripcion || '';
     if (desc.length <= 100) return desc;
     return desc.substring(0, 100) + '...';
   });
 
-  formattedDate = computed(() => {
-    const inc = this.incident();
-    
-    // Use memoization for date formatting
-    const memoizedFormatDate = this.memoizationService.memoize(
-      `formatted-date-${inc.id}`,
-      (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('es-ES', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-      },
-      { maxSize: 50, ttlMs: 60000 } // Cache for 1 minute (date formatting is expensive but doesn't change often)
-    );
-
-    return memoizedFormatDate(inc.created_at);
+  locationText = computed(() => {
+    return this.incident().ubicacion || this.incident().direccion_referencia || 'Sin ubicación';
   });
 
   categoryName = computed(() => {
-    return this.incident().categoria?.nombre || 'Sin categoría';
+    return this.incident().categoria?.nombre || this.incident().categoria_id?.toString() || '';
   });
 
-  locationText = computed(() => {
-    return this.incident().ubicacion || 'Sin ubicación';
-  });
-
-  hasSuggestedTechnician = computed(() => {
-    return this.incident().suggested_technician !== null;
-  });
-
-  // Tooltip texts
-  priorityTooltip = computed(() => {
+  priorityLabel = computed(() => {
     const priority = this.incident().prioridad;
-    const tooltips = {
-      alta: 'Prioridad Alta - Requiere atención inmediata',
-      media: 'Prioridad Media - Atención en horario normal',
-      baja: 'Prioridad Baja - Puede esperar'
+    const labels: Record<string, string> = {
+      alta: 'Alta',
+      media: 'Media',
+      baja: 'Baja'
     };
-    return tooltips[priority];
+    return labels[priority] || priority;
   });
 
-  statusTooltip = computed(() => {
-    const status = this.incident().estado;
-    const tooltips = {
-      pendiente: 'Pendiente - Esperando asignación de taller',
-      asignado: 'Asignado - Taller asignado, esperando aceptación',
-      aceptado: 'Aceptado - Taller confirmó la solicitud',
-      en_camino: 'En Camino - Técnico se dirige al lugar',
-      en_proceso: 'En Proceso - Técnico trabajando en el vehículo',
-      resuelto: 'Resuelto - Servicio completado exitosamente',
-      cancelado: 'Cancelado - Solicitud cancelada',
-      sin_taller_disponible: 'Sin Taller - No hay talleres disponibles'
+  priorityColor = computed(() => {
+    const colors: Record<string, string> = {
+      alta: '#dc2626',
+      media: '#d97706',
+      baja: '#2563eb'
     };
-    return tooltips[status];
+    return colors[this.incident().prioridad] || '#6b7280';
   });
 
-  timeoutTooltip = computed(() => {
-    const remaining = this.timeRemaining();
-    if (remaining === null) {
-      return 'Tiempo agotado - El taller no respondió a tiempo';
-    }
-    return `Tiempo restante: ${remaining} minutos para responder`;
+  statusBadgeClass = computed(() => {
+    const status = this.getIncidentStatus();
+    const statusMap: Record<string, string> = {
+      pendiente: 'badge-warning',
+      asignado: 'badge-blue',
+      aceptado: 'badge-green',
+      en_camino: 'badge-purple',
+      en_proceso: 'badge-orange',
+      resuelto: 'badge-emerald',
+      cancelado: 'badge-red',
+      sin_taller_disponible: 'badge-red'
+    };
+    return statusMap[status] || 'badge-gray';
   });
-
-  noTechnicianTooltip = computed(() => {
-    return 'Sin técnico asignado - Esperando asignación automática';
-  });
-
-  // Host bindings for CSS classes and accessibility
-  @HostBinding('class.has-timeout')
-  get hasTimeoutClass() {
-    return this.hasTimeout();
-  }
-
-  @HostBinding('class.high-priority')
-  get highPriorityClass() {
-    return this.isHighPriority();
-  }
-
-  @HostBinding('attr.role')
-  get role() {
-    return 'button';
-  }
-
-  @HostBinding('attr.tabindex')
-  get tabindex() {
-    return 0;
-  }
-
-  @HostBinding('attr.aria-label')
-  get ariaLabel() {
-    return `Solicitud ${this.incident().id}, ${this.incident().prioridad} prioridad, ${this.incident().estado}`;
-  }
-
-  /**
-   * Handle Enter or Space key to select card
-   */
-  @HostListener('keydown.enter', ['$event'])
-  @HostListener('keydown.space', ['$event'])
-  handleKeyboardSelect(event: Event): void {
-    event.preventDefault();
-    this.cardClick.emit(this.incident().id);
-  }
-
-  /**
-   * Handle click event
-   */
-  @HostListener('click')
-  handleClick(): void {
-    this.cardClick.emit(this.incident().id);
-  }
 }

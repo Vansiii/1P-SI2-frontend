@@ -61,6 +61,13 @@ Thumbs.db
 # Keep example files
 !/public/firebase-messaging-sw.js.example
 
+# Generated environment files (contienen credenciales)
+/src/environments/environment.ts
+
+# Keep example and interface files
+!/src/environments/environment.example.ts
+!/src/environments/environment.interface.ts
+
 # Vercel
 .vercel
 
@@ -72,3 +79,8 @@ Thumbs.db
 *.pem
 secrets/
 credentials/
+
+# Copilot skills and agent artifacts
+.agents/
+skills-lock.json
+.kiro/

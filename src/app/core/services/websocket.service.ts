@@ -68,9 +68,8 @@ export class WebSocketService {
   private readonly eventSubject = new Subject<RealtimeEvent>();
   readonly events$ = this.eventSubject.asObservable();
 
-  // Legacy message stream (for backward compatibility)
-  private messagesSubject = new Subject<RealtimeEvent>();
-  public messages$ = this.messagesSubject.asObservable();
+  // Legacy message stream — aliased to events$ to prevent dual-subject duplication
+  public messages$ = this.events$;
 
   // Legacy connection status (for backward compatibility)
   private connectionStatusSubject = new BehaviorSubject<ConnectionStatus>('disconnected');
@@ -192,18 +191,11 @@ export class WebSocketService {
         this.reconnectAttemptsSignal.set(0);
         this.updateConnectionState('connected');
 
-        // Start heartbeat mechanism
-        this.startHeartbeat();
-
         // Process queued events
         this.processQueuedEvents();
 
-        // Wait a moment before sending initial ping to ensure connection is fully established
-        setTimeout(() => {
-          if (this.socket?.readyState === WebSocket.OPEN) {
-            this.send({ type: 'ping' });
-          }
-        }, 500);
+        // Recover missed events from server after reconnection
+        this.recoverMissedEvents();
       };
 
       // Handle incoming messages
@@ -343,47 +335,34 @@ export class WebSocketService {
    */
   private handleMessage(message: any): void {
     try {
-      // Validate event structure
       if (!this.isValidEvent(message)) {
-        console.warn('⚠️ Invalid event structure, skipping:', message);
+        console.warn('Invalid event structure, skipping:', message);
         return;
       }
 
-      // Create event ID for deduplication
-      const eventId = this.createEventId(message);
-      
-      // Check if already processed (deduplication)
+      // Prefer backend's event_id for deduplication; fall back to constructed ID
+      const eventId = message.event_id || this.createEventId(message);
+
       if (this.processedEventIds.has(eventId)) {
-        console.log('⏭️ Skipping duplicate event:', eventId);
+        console.log('Skipping duplicate event:', eventId);
         return;
       }
 
-      // Mark as processed
       this.addProcessedEvent(eventId);
 
-      // Transform to RealtimeEvent format and emit
+      // Normalize event: always use event_type + payload or type + data
       let realtimeEvent: RealtimeEvent;
-      
-      // Check if it's a RealTimeEvent format (has event_type and payload)
-      if (message.event_type && message.payload) {
+
+      if (message.event_type) {
+        // New standard format: {event_type, event_id, payload, timestamp, version}
         realtimeEvent = {
           type: message.event_type,
-          data: message.payload,
+          data: message.payload ?? message,
           timestamp: message.timestamp || new Date().toISOString(),
           version: message.version || '1.0'
         };
-      }
-      // Check if it's a RealTimeEvent format WITHOUT payload (event_type but no payload)
-      else if (message.event_type) {
-        realtimeEvent = {
-          type: message.event_type,
-          data: message, // Use the entire message as data
-          timestamp: message.timestamp || new Date().toISOString(),
-          version: message.version || '1.0'
-        };
-      }
-      // Handle legacy WebSocketMessage format
-      else if (message.type) {
+      } else if (message.type) {
+        // Legacy format: {type, data, timestamp, version}
         realtimeEvent = {
           type: message.type,
           data: message.data,
@@ -391,22 +370,20 @@ export class WebSocketService {
           version: message.version || '1.0'
         };
       } else {
-        console.warn('⚠️ Unknown message format:', message);
+        console.warn('Unknown message format:', message);
         return;
       }
 
-      // Track last event timestamp
       if (realtimeEvent.timestamp) {
         this.lastEventTimestamp = realtimeEvent.timestamp;
         localStorage.setItem('last_event_timestamp', realtimeEvent.timestamp);
       }
 
-      // Emit to subscribers
-      this.messagesSubject.next(realtimeEvent);
-      
-      console.log('✅ Event processed and emitted:', eventId);
+      this.eventSubject.next(realtimeEvent);
+
+      console.log('Event processed and emitted:', eventId);
     } catch (error) {
-      console.error('❌ Error handling WebSocket message:', error);
+      console.error('Error handling WebSocket message:', error);
     }
   }
 
@@ -620,16 +597,22 @@ export class WebSocketService {
           const events = response.events || [];
           console.log(`✅ Recovered ${events.length} missed events`);
           
-          // Process each missed event
+          // Process each missed event with dedup
           events.forEach((event: WebSocketMessage) => {
-            // Transform to RealtimeEvent format
+            const eventId = (event as any).event_id || this.createEventId(event);
+            if (this.processedEventIds.has(eventId)) {
+              console.log('Skipping duplicate recovered event:', eventId);
+              return;
+            }
+            this.addProcessedEvent(eventId);
+            
             const realtimeEvent: RealtimeEvent = {
               type: event.type as RealtimeEvent['type'],
               data: event.data,
               timestamp: event.timestamp || new Date().toISOString(),
               version: event.version || '1.0'
             };
-            this.messagesSubject.next(realtimeEvent);
+            this.eventSubject.next(realtimeEvent);
           });
 
           // Update last event timestamp
@@ -711,23 +694,13 @@ export class WebSocketService {
 
   /**
    * Handle incoming real-time event with deduplication
-   * Uses RxJS retry and retryWhen operators for automatic reconnection
    */
   private handleIncomingEvent(event: RealtimeEvent): void {
-    // 1. Deduplication check (already done in handleMessage, but double-check for safety)
     const eventId = this.createEventId(event);
     if (this.processedEventIds.has(eventId)) {
-      console.log('⏭️ Skipping duplicate event (handleIncomingEvent):', eventId);
       return;
     }
-
-    // 2. Cache event with TTL
     this.eventCache.set(eventId, event);
-
-    // 3. Emit event to subscribers (already done in handleMessage via messagesSubject)
-    this.eventSubject.next(event);
-
-    // 4. Cleanup old events periodically
     this.cleanupExpiredEvents();
   }
 
@@ -763,16 +736,20 @@ export class WebSocketService {
       return;
     }
 
-    console.log(`📤 Processing ${this.eventQueue.length} queued events`);
+    console.log(`Processing ${this.eventQueue.length} queued events`);
     
     const events = [...this.eventQueue];
     this.eventQueue = [];
 
     events.forEach(event => {
-      this.handleIncomingEvent(event);
+      const eventId = this.createEventId(event);
+      if (this.processedEventIds.has(eventId)) {
+        return;
+      }
+      this.addProcessedEvent(eventId);
+      this.eventSubject.next(event);
     });
 
-    // Recover any missed events from server
     this.recoverMissedEvents();
   }
 
@@ -827,7 +804,6 @@ export class WebSocketService {
     }
 
     this.eventSubject.complete();
-    this.messagesSubject.complete();
     this.connectionStatusSubject.complete();
     
     this.processedEventIds.clear();

@@ -641,3 +641,53 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Realtime notification banner */
+.realtime-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  color: #1e40af;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.realtime-banner-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: #3b82f6;
+}
+
+.realtime-banner span {
+  flex: 1;
+}
+
+.realtime-banner-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.813rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.realtime-banner-refresh:hover {
+  background: #2563eb;
+}
+
+.realtime-banner-refresh svg {
+  width: 14px;
+  height: 14px;
+}

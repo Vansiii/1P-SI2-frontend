@@ -43,6 +43,7 @@ export type RealtimeEventType =
   | 'incident.technician_arrived'
   | 'incident.work_started'
   | 'incident.work_completed'
+  | 'incident.updated'
   | 'incident.reassigned'
   // Legacy incident events (underscore notation)
   | 'incident_status_change'
@@ -105,6 +106,8 @@ export type RealtimeEventType =
   | 'evidence_deleted'
   // Notification events
   | 'notification.received'
+  | 'notification.read'
+  | 'notification.all_read'
   | 'notification.badge_updated'
   | 'notification_created'
   | 'notification_read'

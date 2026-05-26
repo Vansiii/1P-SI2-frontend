@@ -112,7 +112,7 @@ export class ChatRealtimeService {
         case 'chat.message_sent':
         case 'new_message':
         case 'new_chat_message':
-          this.handleMessageDelivered(event as RealtimeEvent<any>);
+          this.handleMessageSent(event as RealtimeEvent<any>);
           break;
         default:
           console.warn('⚠️ Unknown chat event type:', event.type);
@@ -197,6 +197,33 @@ export class ChatRealtimeService {
       this.emitUpdate(update);
     } catch (error) {
       console.error('❌ Error handling user_stopped_typing event:', error, event);
+    }
+  }
+
+  /**
+   * Handle new message sent event — adds message to the chat list
+   */
+  private handleMessageSent(event: RealtimeEvent<any>): void {
+    try {
+      const data = event.data || (event as any);
+
+      if (!data.message_id || !data.incident_id) {
+        console.error('❌ Invalid message_sent event: missing required fields', event);
+        return;
+      }
+
+      const update: ChatUpdate = {
+        incidentId: data.incident_id,
+        updateType: 'delivered',
+        message: data.content || data.message || `Mensaje de ${data.sender_name || 'Usuario'}`,
+        priority: 'medium',
+        timestamp: event.timestamp,
+        data: data
+      };
+
+      this.emitUpdate(update);
+    } catch (error) {
+      console.error('❌ Error handling message_sent event:', error, event);
     }
   }
 

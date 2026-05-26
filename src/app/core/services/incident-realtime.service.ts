@@ -167,23 +167,41 @@ export class IncidentRealtimeService {
     try {
       // ✅ Handle both formats: with data field or root-level properties
       const data = event.data || (event as any);
-      
-      // Validate required fields - check incident object first
-      const incident = data.incident;
-      if (!incident || !incident.id) {
-        console.error('❌ Invalid incident.created event: missing incident or incident.id', event);
+
+      const rawIncident: any = data.incident || data;
+      const incidentId = rawIncident?.id ?? rawIncident?.incident_id;
+      if (!incidentId) {
+        console.error('❌ Invalid incident.created event: missing incident_id', event);
         return;
       }
-      
-      const incidentId = incident.id;
+
+      const normalizedIncident = {
+        id: incidentId,
+        descripcion: rawIncident?.descripcion || rawIncident?.description || 'Sin descripción',
+        estado_actual: rawIncident?.estado_actual || rawIncident?.estado || 'pendiente',
+        latitud: rawIncident?.latitud ?? rawIncident?.latitude ?? rawIncident?.location?.latitude ?? null,
+        longitud: rawIncident?.longitud ?? rawIncident?.longitude ?? rawIncident?.location?.longitude ?? null,
+        direccion_referencia: rawIncident?.direccion_referencia ?? rawIncident?.location?.address ?? null,
+        created_at: rawIncident?.created_at || event.timestamp,
+        updated_at: rawIncident?.updated_at || event.timestamp,
+        cliente_id: rawIncident?.cliente_id ?? rawIncident?.client_id ?? 0,
+        vehiculo_id: rawIncident?.vehiculo_id ?? rawIncident?.vehicle_id ?? 0,
+        taller_id: rawIncident?.taller_id ?? rawIncident?.workshop_id ?? null,
+        tecnico_id: rawIncident?.tecnico_id ?? rawIncident?.technician_id ?? null,
+      };
       
       const update: IncidentUpdate = {
         incidentId: incidentId,
         updateType: 'created',
-        message: `Nuevo incidente creado: ${incident.descripcion || 'Sin descripción'}`,
+        message: `Nuevo incidente creado: ${normalizedIncident.descripcion}`,
         priority: event.priority || 'medium',
         timestamp: event.timestamp,
-        data: data
+        data: {
+          ...data,
+          incident: normalizedIncident,
+          incident_id: incidentId,
+          estado_actual: normalizedIncident.estado_actual
+        }
       };
 
       this.emitUpdate(update);
@@ -194,10 +212,10 @@ export class IncidentRealtimeService {
         const newMap = new Map(incidents);
         newMap.set(incidentId, {
           id: incidentId,
-          status: 'pending',
-          description: incident.descripcion,
-          location: incident.ubicacion,
-          createdAt: incident.created_at
+          status: normalizedIncident.estado_actual,
+          description: normalizedIncident.descripcion,
+          location: normalizedIncident.direccion_referencia,
+          createdAt: normalizedIncident.created_at
         });
         return newMap;
       });
@@ -232,7 +250,7 @@ export class IncidentRealtimeService {
       this.showToast(update);
 
       // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'assigned');
+      this.updateIncidentStatus(data.incident_id, 'asignado');
     } catch (error) {
       console.error('❌ Error handling incident.assigned event:', error, event);
     }
@@ -264,7 +282,7 @@ export class IncidentRealtimeService {
       this.showToast(update);
 
       // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'accepted');
+      this.updateIncidentStatus(data.incident_id, 'aceptado');
     } catch (error) {
       console.error('❌ Error handling assignment_accepted event:', error, event);
     }
@@ -294,9 +312,6 @@ export class IncidentRealtimeService {
 
       this.emitUpdate(update);
       this.showToast(update);
-
-      // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'rejected');
     } catch (error) {
       console.error('❌ Error handling assignment_rejected event:', error, event);
     }
@@ -407,7 +422,7 @@ export class IncidentRealtimeService {
       this.showToast(update);
 
       // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'on_way');
+      this.updateIncidentStatus(data.incident_id, 'en_camino');
     } catch (error) {
       console.error('❌ Error handling technician_on_way event:', error, event);
     }
@@ -439,7 +454,7 @@ export class IncidentRealtimeService {
       this.showToast(update);
 
       // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'arrived');
+      this.updateIncidentStatus(data.incident_id, 'en_proceso');
     } catch (error) {
       console.error('❌ Error handling technician_arrived event:', error, event);
     }
@@ -471,7 +486,7 @@ export class IncidentRealtimeService {
       this.showToast(update);
 
       // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'completed');
+      this.updateIncidentStatus(data.incident_id, 'resuelto');
     } catch (error) {
       console.error('❌ Error handling work_completed event:', error, event);
     }
@@ -503,7 +518,7 @@ export class IncidentRealtimeService {
       this.showToast(update);
 
       // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'cancelled');
+      this.updateIncidentStatus(data.incident_id, 'cancelado');
     } catch (error) {
       console.error('❌ Error handling incident.cancelled event:', error, event);
     }
@@ -583,7 +598,7 @@ export class IncidentRealtimeService {
       this.showToast(update);
 
       // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'timeout');
+      this.updateIncidentStatus(data.incident_id, 'sin_taller_disponible');
     } catch (error) {
       console.error('❌ Error handling assignment_timeout event:', error, event);
     }
@@ -614,7 +629,7 @@ export class IncidentRealtimeService {
       this.emitUpdate(update);
 
       // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'in_progress');
+      this.updateIncidentStatus(data.incident_id, 'en_proceso');
     } catch (error) {
       console.error('❌ Error handling work_started event:', error, event);
     }

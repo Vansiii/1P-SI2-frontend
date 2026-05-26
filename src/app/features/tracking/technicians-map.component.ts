@@ -136,7 +136,7 @@ interface Incident {
       left: 280px;
       right: 0;
       bottom: 0;
-      background: #0a0a0a;
+      background: #f5f7fa;
       overflow: hidden;
       z-index: 1;
     }

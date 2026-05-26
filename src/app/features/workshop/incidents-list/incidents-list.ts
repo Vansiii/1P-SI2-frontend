@@ -1,4 +1,5 @@
-import { Component, OnInit, OnDestroy, inject, signal, effect, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, effect, computed, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ScrollingModule } from '@angular/cdk/scrolling';
@@ -8,25 +9,67 @@ import { environment } from '../../../../environments/environment';
 import {
   IncidentsService,
   type IncidentAiAnalysis,
-  type LegacyIncident as ServiceIncident,
 } from '../../../core/services/incidents.service';
-import { WebSocketService } from '../../../core/services/websocket.service';
-import { AuthService } from '../../../core/services/auth.service';
+import {
+  Incident,
+  IncidentPriority,
+  IncidentStatus,
+  PriorityColors,
+  StatusColors,
+  Client,
+  Vehicle,
+  Category,
+  SuggestedTechnician as ModelSuggestedTechnician,
+  Evidence,
+  ImageEvidence,
+  AudioEvidence,
+  AIAnalysis,
+} from '../../../core/models/incident.model';
+import { IncidentCardComponent } from './components/incident-card/incident-card.component';
+import { sortIncidents } from '../../../core/utils/incident-list.utils';
 
-interface TechnicianBasicInfo {
+/** API raw response fields (as returned by backend) */
+interface ApiIncidentRaw {
+  id: number;
+  client_id: number;
+  vehiculo_id: number;
+  taller_id: number | null;
+  tecnico_id: number | null;
+  latitude: number;
+  longitude: number;
+  direccion_referencia: string | null;
+  descripcion: string;
+  categoria_ia: string | null;
+  prioridad_ia: string | null;
+  resumen_ia: string | null;
+  es_ambiguo: boolean;
+  estado_actual: string;
+  created_at: string;
+  updated_at: string;
+  assigned_at: string | null;
+  resolved_at: string | null;
+  technician?: ApiTechnicianRaw | null;
+  workshop?: ApiWorkshopRaw | null;
+  suggested_technician?: ApiSuggestedTechRaw | null;
+  evidencias?: ApiEvidenciaRaw[];
+  imagenes?: ApiImagenRaw[];
+  audios?: ApiAudioRaw[];
+}
+
+interface ApiTechnicianRaw {
   id: number;
   first_name: string;
   last_name: string;
   phone: string | null;
 }
 
-interface WorkshopBasicInfo {
+interface ApiWorkshopRaw {
   id: number;
   workshop_name: string;
   phone: string | null;
 }
 
-interface SuggestedTechnicianInfo {
+interface ApiSuggestedTechRaw {
   technician_id: number;
   first_name: string;
   last_name: string;
@@ -35,14 +78,52 @@ interface SuggestedTechnicianInfo {
   distance_km: number;
   ai_reasoning: string | null;
   assignment_strategy: string;
-  status?: string; // pending, timeout, rejected, accepted
-  timeout_at?: string; // Timestamp cuando expira el timeout
+  status?: string;
+  timeout_at?: string;
 }
 
-interface Incident {
+interface ApiEvidenciaRaw {
+  id: number;
+  tipo: string;
+  descripcion: string;
+  created_at: string;
+}
+
+interface ApiImagenRaw {
+  id: number;
+  file_url: string;
+  file_name: string;
+  created_at: string;
+}
+
+interface ApiAudioRaw {
+  id: number;
+  file_url: string;
+  file_name: string;
+  created_at: string;
+}
+
+/** Unified type with the model Incident shape plus backward-compat aliases */
+type UnifiedIncident = Incident & {
+  _isTimedOut?: boolean;
+  estado_actual: IncidentStatus;
+  prioridad_ia: string | null;
+  categoria_ia: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  client_id: number;
+  technician: ApiTechnicianRaw | null;
+  workshop: ApiWorkshopRaw | null;
+  suggested_technician_info?: ApiSuggestedTechRaw | null;
+  evidencias?: any[];
+  imagenes?: any[];
+  audios?: any[];
+};
+
+interface IncidentDetail {
   id: number;
   descripcion: string;
-  estado_actual: string;
+  estado_actual: IncidentStatus;
   prioridad_ia: string | null;
   categoria_ia: string | null;
   created_at: string;
@@ -53,17 +134,14 @@ interface Incident {
   vehiculo_id: number;
   taller_id: number | null;
   tecnico_id: number | null;
-  technician: TechnicianBasicInfo | null;
-  workshop: WorkshopBasicInfo | null;
-  suggested_technician?: SuggestedTechnicianInfo | null;  // Opcional
-  // Campos calculados localmente
+  technician: ApiTechnicianRaw | null;
+  workshop: ApiWorkshopRaw | null;
+  suggested_technician: ModelSuggestedTechnician | null;
+  suggested_technician_info?: ApiSuggestedTechRaw | null;
   _isTimedOut?: boolean;
-}
-
-interface IncidentDetail extends Incident {
-  evidencias?: Evidencia[];
-  imagenes?: EvidenciaImagen[];
-  audios?: EvidenciaAudio[];
+  evidencias?: ApiEvidenciaRaw[];
+  imagenes?: ApiImagenRaw[];
+  audios?: ApiAudioRaw[];
 }
 
 interface Evidencia {
@@ -89,20 +167,241 @@ interface EvidenciaAudio {
 
 interface ApiResponse {
   success: boolean;
-  data: Incident[];
+  data: ApiIncidentRaw[];
   message: string;
 }
 
 interface ApiDetailResponse {
   success: boolean;
-  data: IncidentDetail;
+  data: ApiIncidentRaw;
   message: string;
+}
+
+/**
+ * Adapter: converts raw API response to unified Incident model.
+ * Ensures parity between API-fetched and WebSocket-arriving data.
+ */
+function mapApiToIncident(raw: ApiIncidentRaw): UnifiedIncident {
+  const prioridad = mapBackendPriority(raw.prioridad_ia);
+  const estado = mapBackendStatus(raw.estado_actual);
+
+  // Map suggested_technician if present
+  let suggested: ModelSuggestedTechnician | null = null;
+  if (raw.suggested_technician) {
+    suggested = {
+      technician_id: raw.suggested_technician.technician_id,
+      technician_name: `${raw.suggested_technician.first_name} ${raw.suggested_technician.last_name}`,
+      distance_km: raw.suggested_technician.distance_km,
+      compatibility_score: raw.suggested_technician.final_score,
+      timeout_at: raw.suggested_technician.timeout_at || '',
+      assigned_at: raw.assigned_at || raw.created_at,
+    };
+  }
+
+  // Build categoria object from string
+  const categoria: Category | undefined = raw.categoria_ia
+    ? { id: 0, nombre: raw.categoria_ia, descripcion: '', icono: null }
+    : undefined;
+
+  return {
+    // Model Incident fields
+    id: raw.id,
+    descripcion: raw.descripcion,
+    prioridad,
+    estado,
+    cliente_id: raw.client_id,
+    vehiculo_id: raw.vehiculo_id,
+    categoria_id: 0,
+    categoria,
+    taller_id: raw.taller_id,
+    tecnico_id: raw.tecnico_id,
+    ubicacion: raw.direccion_referencia,
+    latitud: raw.latitude,
+    longitud: raw.longitude,
+    direccion_referencia: raw.direccion_referencia,
+    suggested_technician: suggested,
+    rejection_count: 0,
+    has_timeout: false,
+    timeout_at: null,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    // Legacy aliases (only fields NOT already in model Incident)
+    _isTimedOut: false,
+    estado_actual: estado,
+    prioridad_ia: raw.prioridad_ia,
+    categoria_ia: raw.categoria_ia,
+    latitude: raw.latitude,
+    longitude: raw.longitude,
+    client_id: raw.client_id,
+    technician: raw.technician || null,
+    workshop: raw.workshop || null,
+    suggested_technician_info: raw.suggested_technician || null,
+    evidencias: raw.evidencias as any,
+    imagenes: raw.imagenes as any,
+    audios: raw.audios as any,
+  } as unknown as UnifiedIncident;
+}
+
+function mapBackendPriority(prioridadIa: string | null): IncidentPriority {
+  if (!prioridadIa) return 'media';
+  const lower = prioridadIa.toLowerCase();
+  if (lower.includes('alta') || lower.includes('high')) return 'alta';
+  if (lower.includes('baja') || lower.includes('low')) return 'baja';
+  return 'media';
+}
+
+function mapBackendStatus(statusRaw: string): IncidentStatus {
+  const normalized = String(statusRaw || '').trim().toLowerCase();
+  const statusMap: Record<string, IncidentStatus> = {
+    'pendiente': 'pendiente',
+    'pending': 'pendiente',
+    'asignado': 'asignado',
+    'assigned': 'asignado',
+    'aceptado': 'aceptado',
+    'accepted': 'aceptado',
+    'en_camino': 'en_camino',
+    'on_way': 'en_camino',
+    'en_proceso': 'en_proceso',
+    'in_progress': 'en_proceso',
+    'resuelto': 'resuelto',
+    'resolved': 'resuelto',
+    'cancelado': 'cancelado',
+    'cancelled': 'cancelado',
+    'sin_taller_disponible': 'sin_taller_disponible',
+    'sin_taller_asignado': 'sin_taller_disponible',
+    'sin taller disponible': 'sin_taller_disponible',
+    'sin taller asignado': 'sin_taller_disponible',
+    'no_workshop_available': 'sin_taller_disponible',
+  };
+  return statusMap[normalized] || 'pendiente';
+}
+
+function mapServiceIncidentToUnified(
+  serviceIncident: any,
+  existing?: UnifiedIncident
+): UnifiedIncident {
+  const prioridad = mapBackendPriority(serviceIncident.prioridad_ia || serviceIncident.prioridad_label || null);
+  let estado = mapBackendStatus(serviceIncident.estado_actual || serviceIncident.estado || 'pendiente');
+
+  // Preserve sin_taller_disponible: if existing already has it, don't let stale
+  // data from concurrent async handlers (e.g. handleAssignmentTimeout HTTP fetch)
+  // overwrite back to an earlier state.
+  if (existing && existing.estado_actual === 'sin_taller_disponible' && estado !== 'sin_taller_disponible') {
+    estado = 'sin_taller_disponible';
+  }
+
+  const categoria: Category | undefined = serviceIncident.categoria_ia
+    ? { id: 0, nombre: serviceIncident.categoria_ia, descripcion: '', icono: null }
+    : existing?.categoria;
+
+  let suggested: ModelSuggestedTechnician | null = existing?.suggested_technician || null;
+  let suggestedTechInfo: ApiSuggestedTechRaw | null = existing?.suggested_technician_info || null;
+  const resolvedTimeoutAt =
+    serviceIncident.timeout_at ||
+    serviceIncident.suggested_technician?.timeout_at ||
+    serviceIncident.suggested_technician_info?.timeout_at ||
+    existing?.suggested_technician?.timeout_at ||
+    existing?.suggested_technician_info?.timeout_at ||
+    null;
+
+  let derivedTimeoutAt = resolvedTimeoutAt;
+  if (!derivedTimeoutAt) {
+    const estimatedMinutesRaw =
+      serviceIncident.estimated_time ??
+      serviceIncident.estimated_time_minutes ??
+      serviceIncident.response_timeout_minutes;
+    const estimatedMinutes = Number(estimatedMinutesRaw);
+    if (Number.isFinite(estimatedMinutes) && estimatedMinutes > 0) {
+      derivedTimeoutAt = new Date(Date.now() + estimatedMinutes * 60 * 1000).toISOString();
+    }
+  }
+
+  if (serviceIncident.suggested_technician) {
+    const nameParts = (serviceIncident.suggested_technician.technician_name || '').split(' ');
+    suggested = {
+      technician_id: serviceIncident.suggested_technician.technician_id,
+      technician_name: serviceIncident.suggested_technician.technician_name || '',
+      distance_km: serviceIncident.suggested_technician.distance_km || 0,
+      compatibility_score: serviceIncident.suggested_technician.compatibility_score || 0,
+      timeout_at: serviceIncident.suggested_technician.timeout_at || derivedTimeoutAt || '',
+      assigned_at: serviceIncident.assigned_at || serviceIncident.created_at,
+    };
+    suggestedTechInfo = {
+      technician_id: serviceIncident.suggested_technician.technician_id,
+      first_name: nameParts[0] || '',
+      last_name: nameParts.slice(1).join(' ') || '',
+      phone: null,
+      final_score: serviceIncident.suggested_technician.compatibility_score || 0,
+      distance_km: serviceIncident.suggested_technician.distance_km || 0,
+      ai_reasoning: null,
+      assignment_strategy: 'ai_assisted',
+      timeout_at: serviceIncident.suggested_technician.timeout_at || derivedTimeoutAt || undefined,
+    };
+  }
+
+  if (!suggested && derivedTimeoutAt) {
+    const fallbackTechnicianId =
+      serviceIncident.technician_id ??
+      existing?.tecnico_id ??
+      existing?.suggested_technician?.technician_id ??
+      0;
+
+    suggested = {
+      technician_id: fallbackTechnicianId,
+      technician_name: existing?.suggested_technician?.technician_name || '',
+      distance_km: existing?.suggested_technician?.distance_km || 0,
+      compatibility_score: existing?.suggested_technician?.compatibility_score || 0,
+      timeout_at: derivedTimeoutAt,
+      assigned_at: serviceIncident.assigned_at || existing?.suggested_technician?.assigned_at || serviceIncident.created_at,
+    };
+  }
+
+  const isTimedOut = estado === 'sin_taller_disponible' || !!serviceIncident._isTimedOut;
+  const hasTimeout = isTimedOut || !!serviceIncident.has_timeout;
+
+  return {
+    id: serviceIncident.id,
+    descripcion: serviceIncident.descripcion,
+    prioridad,
+    estado,
+    cliente_id: serviceIncident.cliente_id ?? serviceIncident.client_id ?? existing?.cliente_id ?? 0,
+    vehiculo_id: serviceIncident.vehiculo_id ?? existing?.vehiculo_id ?? 0,
+    categoria_id: existing?.categoria_id ?? 0,
+    categoria,
+    taller_id: serviceIncident.taller_id ?? null,
+    tecnico_id: serviceIncident.tecnico_id ?? null,
+    taller: existing?.taller,
+    tecnico: existing?.tecnico,
+    ubicacion: serviceIncident.direccion_referencia ?? existing?.ubicacion ?? null,
+    latitud: serviceIncident.latitud ?? serviceIncident.latitude ?? existing?.latitud ?? null,
+    longitud: serviceIncident.longitud ?? serviceIncident.longitude ?? existing?.longitud ?? null,
+    direccion_referencia: serviceIncident.direccion_referencia ?? existing?.direccion_referencia ?? null,
+    suggested_technician: suggested,
+    rejection_count: existing?.rejection_count || 0,
+    has_timeout: hasTimeout,
+    timeout_at: derivedTimeoutAt ?? suggested?.timeout_at ?? null,
+    created_at: serviceIncident.created_at,
+    updated_at: serviceIncident.updated_at || serviceIncident.created_at,
+    _isTimedOut: isTimedOut,
+    estado_actual: estado,
+    prioridad_ia: serviceIncident.prioridad_ia ?? null,
+    categoria_ia: serviceIncident.categoria_ia ?? null,
+    latitude: serviceIncident.latitud ?? serviceIncident.latitude ?? existing?.latitude ?? null,
+    longitude: serviceIncident.longitud ?? serviceIncident.longitude ?? existing?.longitude ?? null,
+    client_id: serviceIncident.cliente_id ?? serviceIncident.client_id ?? existing?.client_id ?? 0,
+    technician: existing?.technician || null,
+    workshop: existing?.workshop || null,
+    suggested_technician_info: suggestedTechInfo,
+    evidencias: existing?.evidencias,
+    imagenes: existing?.imagenes,
+    audios: existing?.audios,
+  } as UnifiedIncident;
 }
 
 @Component({
   selector: 'app-incidents-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, ScrollingModule],
+  imports: [CommonModule, FormsModule, ScrollingModule, IncidentCardComponent],
   templateUrl: './incidents-list.html',
   styleUrl: './incidents-list.css'
 })
@@ -111,18 +410,17 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   private readonly incidentsService = inject(IncidentsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  private readonly wsService = inject(WebSocketService);
-  private readonly authService = inject(AuthService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly apiUrl = `${environment.apiUrl}/incidentes`;
 
-  // ✅ SEPARACIÓN DE LISTAS: Base completa vs Filtrada
-  private allIncidents = signal<Incident[]>([]); // Lista completa para WebSocket
-  incidents = signal<Incident[]>([]); // Lista filtrada para UI
+  // Signals - unified Incident type throughout
+  private allIncidents = signal<UnifiedIncident[]>([]);
+  incidents = signal<UnifiedIncident[]>([]);
   loading = signal(false);
   error = signal<string | null>(null);
   success = signal<string | null>(null);
   selectedFilter = signal<string>('todos');
-  selectedIncident = signal<IncidentDetail | null>(null);
+  selectedIncident = signal<UnifiedIncident | null>(null);
   loadingDetail = signal(false);
   viewMode = signal<'list' | 'map'>('list');
   showRejectModal = signal(false);
@@ -139,23 +437,39 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   latestAiAnalysis = signal<IncidentAiAnalysis | null>(null);
   aiLoading = signal(false);
   
-  // Contadores de estados
-  statusCounts = signal({
-    pendiente: 0,
-    asignado: 0,
-    en_proceso: 0,
-    resuelto: 0,
-    total: 0
+  // Contadores de estados - derivados de la lista local en vez de HTTP
+  readonly statusCounts = computed(() => {
+    const incidents = this.allIncidents();
+    const getStatus = (incident: UnifiedIncident): string =>
+      (incident.estado_actual as string) || (incident as any).estado || 'pendiente';
+    const pendiente = incidents.filter(i => getStatus(i) === 'pendiente').length;
+    const asignado = incidents.filter(i => getStatus(i) === 'asignado').length;
+    const en_proceso = incidents.filter(i =>
+      ['aceptado', 'en_camino', 'en_proceso'].includes(getStatus(i))
+    ).length;
+    const resuelto = incidents.filter(i => getStatus(i) === 'resuelto').length;
+    return {
+      pendiente,
+      asignado,
+      en_proceso,
+      resuelto,
+      total: pendiente + asignado + en_proceso + resuelto
+    };
   });
 
   private map: any = null;
   private markers: any[] = [];
   private L: any = null;
-  private timeoutCheckInterval: any = null;
+  private readonly serviceManagedIncidentIds = new Set<number>();
 
   readonly filteredIncidents = computed(() => {
     const filter = this.selectedFilter();
-    const allIncidents = this.allIncidents(); // ✅ Usar lista completa para filtrar
+    const getStatus = (incident: UnifiedIncident): string =>
+      (incident.estado_actual as string) || (incident as any).estado || 'pendiente';
+    // Talleres NO deben seguir viendo incidentes sin_taller_disponible
+    const allIncidents = this.allIncidents().filter(
+      incident => getStatus(incident) !== 'sin_taller_disponible'
+    );
     
     console.log('🔍 Filtering incidents:', {
       filter,
@@ -164,16 +478,13 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     });
     
     if (filter === 'todos') {
-      console.log('✅ Filter "todos" - returning all incidents:', allIncidents.length);
       return allIncidents;
     }
     
     if (filter === 'pendiente') {
-      // Los incidentes pendientes pueden venir del endpoint /pendientes/asignacion
-      // que incluye incidentes con estado 'pendiente' o que están esperando asignación
       const filtered = allIncidents.filter(incident => 
-        incident.estado_actual === 'pendiente' || 
-        (incident.estado_actual === 'pendiente' && !incident.taller_id)
+        getStatus(incident) === 'pendiente' || 
+        (getStatus(incident) === 'pendiente' && !incident.taller_id)
       );
       console.log('✅ Filter "pendiente" - filtered:', {
         count: filtered.length,
@@ -182,7 +493,7 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       return filtered;
     }
     
-    const filtered = allIncidents.filter(incident => incident.estado_actual === filter);
+    const filtered = allIncidents.filter(incident => getStatus(incident) === filter);
     console.log('✅ Filter result:', {
       filter,
       count: filtered.length,
@@ -202,20 +513,11 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   });
 
   // Track by function for virtual scroll performance
-  trackByIncidentId(index: number, incident: Incident): number {
+  trackByIncidentId(index: number, incident: UnifiedIncident): number {
     return incident.id;
   }
 
   constructor() {
-    // ✅ Effect para conectar WebSocket cuando el usuario esté autenticado
-    effect(() => {
-      const user = this.authService.currentUser();
-      if (user && !this.wsService.isConnected()) {
-        console.log('✅ User authenticated, connecting WebSocket...');
-        this.connectWebSocket();
-      }
-    });
-    
     // ✅ Effect para aplicar filtro automáticamente cuando cambie
     effect(() => {
       const filtered = this.filteredIncidents();
@@ -264,79 +566,35 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       }
     });
 
-    // ✅ Suscribirse al servicio reactivo de incidentes
-    // IMPORTANTE: Actualizar lista completa y aplicar filtro automáticamente
-    this.incidentsService.incidents$.subscribe(incidents => {
-      const existingIncidents = this.allIncidents(); // ✅ Obtener lista actual
-      
-      // ✅ FUSIONAR incidentes en lugar de reemplazar
-      // Crear un mapa de incidentes existentes por ID
-      const existingMap = new Map(existingIncidents.map(inc => [inc.id, inc]));
-      
-      // Convertir los incidentes del servicio al formato local
-      const incomingIncidents: Incident[] = incidents.map(inc => {
-        // Buscar el incidente existente para preservar campos locales
-        const existing = existingMap.get(inc.id);
-        
-        // Convertir suggested_technician del servicio al formato local
-        let suggestedTech: SuggestedTechnicianInfo | null = null;
-        if (inc.suggested_technician && inc.suggested_technician.technician_name) {
-          const nameParts = inc.suggested_technician.technician_name.split(' ');
-          suggestedTech = {
-            technician_id: inc.suggested_technician.technician_id,
-            first_name: nameParts[0] || '',
-            last_name: nameParts.slice(1).join(' ') || '',
-            phone: null,
-            final_score: inc.suggested_technician.compatibility_score || 0,
-            distance_km: inc.suggested_technician.distance_km || 0,
-            ai_reasoning: null,
-            assignment_strategy: 'ai_assisted'
-          };
+    // Fuente única realtime: IncidentsService.
+    // Merge incremental para no perder incidentes cargados por HTTP inicial.
+    this.incidentsService.incidents$.subscribe(serviceIncidents => {
+      const currentAll = this.allIncidents();
+      const currentMap = new Map(currentAll.map(incident => [incident.id, incident]));
+      const incomingIds = new Set<number>();
+
+      for (const serviceIncident of serviceIncidents) {
+        const normalized = mapServiceIncidentToUnified(
+          serviceIncident,
+          currentMap.get(serviceIncident.id)
+        );
+        currentMap.set(normalized.id, normalized);
+        incomingIds.add(normalized.id);
+        this.serviceManagedIncidentIds.add(normalized.id);
+      }
+
+      // Solo eliminar IDs que fueron previamente gestionados por realtime.
+      for (const managedId of Array.from(this.serviceManagedIncidentIds)) {
+        if (!incomingIds.has(managedId)) {
+          currentMap.delete(managedId);
+          this.serviceManagedIncidentIds.delete(managedId);
         }
-        
-        return {
-          id: inc.id,
-          descripcion: inc.descripcion,
-          estado_actual: inc.estado_actual,
-          prioridad_ia: inc.prioridad_ia,
-          categoria_ia: inc.categoria_ia,
-          created_at: inc.created_at,
-          direccion_referencia: inc.direccion_referencia,
-          latitude: inc.latitud,
-          longitude: inc.longitud,
-          client_id: inc.cliente_id,
-          vehiculo_id: inc.vehiculo_id,
-          taller_id: inc.taller_id,
-          tecnico_id: inc.tecnico_id,
-          technician: null,
-          workshop: null,
-          // ✅ Usar suggested_technician convertido del servicio si existe, sino preservar el existente
-          suggested_technician: suggestedTech || existing?.suggested_technician || null,
-          _isTimedOut: existing?._isTimedOut || false
-        };
-      });
+      }
+
+      this.allIncidents.set(sortIncidents(Array.from(currentMap.values())));
       
-      // ✅ Actualizar o agregar cada incidente del servicio
-      incomingIncidents.forEach(incoming => {
-        existingMap.set(incoming.id, incoming);
-      });
-      
-      // ✅ Convertir el mapa de vuelta a array
-      const mergedIncidents = Array.from(existingMap.values());
-      
-      // ✅ Actualizar lista completa con incidentes fusionados
-      this.allIncidents.set(mergedIncidents);
-      
-      // ✅ Aplicar filtro automáticamente
       const filtered = this.filteredIncidents();
       this.incidents.set(filtered);
-      
-      console.log('✅ Incidents updated from service (merged, filter preserved):', {
-        total: mergedIncidents.length,
-        filtered: filtered.length,
-        filter: this.selectedFilter(),
-        incoming: incomingIncidents.length
-      });
     });
 
     this.incidentsService.loading$.subscribe(loading => {
@@ -374,24 +632,14 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyMap();
     this.stopTimeoutChecker(); // ✅ Detener verificador de timeouts
-    // this.wsService.disconnect(); // ✅ Desconectar WebSocket
   }
 
   /**
-   * ✅ Conectar WebSocket para recibir actualizaciones en tiempo real
-   * 
-   * NOTA: Los eventos WebSocket son manejados centralmente por IncidentsService.
-   * Este componente solo necesita suscribirse al observable incidents$ del servicio.
-   * Las suscripciones directas a eventos WebSocket causaban procesamiento duplicado.
+   * Aplicar el filtro actual a la lista de incidentes visible
    */
-  connectWebSocket(): void {
-    // Conectar WebSocket si no está conectado
-    if (!this.wsService.isConnected()) {
-      this.wsService.connect();
-    }
-    
-    console.log('✅ WebSocket connected - events handled centrally by IncidentsService');
-    console.log('📡 Component subscribes to IncidentsService.incidents$ for reactive updates');
+  private applyCurrentFilter(): void {
+    const filtered = this.filteredIncidents();
+    this.incidents.set(filtered);
   }
 
   destroyMap(): void {
@@ -419,31 +667,8 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
   }
 
   loadStatusCounts() {
-    // Cargar conteos de todos los estados en paralelo
-    const estados = ['pendiente', 'asignado', 'en_proceso', 'resuelto'];
-    const requests = estados.map(estado => {
-      const url = estado === 'pendiente' 
-        ? `${this.apiUrl}/pendientes/asignacion`
-        : `${this.apiUrl}?estado=${estado}`;
-      return this.http.get<ApiResponse>(url);
-    });
-
-    // Ejecutar todas las peticiones en paralelo
-    Promise.all(requests.map(req => req.toPromise()))
-      .then(responses => {
-        const counts = {
-          pendiente: responses[0]?.data.length || 0,
-          asignado: responses[1]?.data.length || 0,
-          en_proceso: responses[2]?.data.length || 0,
-          resuelto: responses[3]?.data.length || 0,
-          total: 0
-        };
-        counts.total = counts.pendiente + counts.asignado + counts.en_proceso + counts.resuelto;
-        this.statusCounts.set(counts);
-      })
-      .catch(err => {
-        console.error('Error loading status counts:', err);
-      });
+    // ✅ Derived from local allIncidents signal — no HTTP needed
+    // statusCounts is a computed signal that auto-recalculates
   }
 
   async loadLeaflet() {
@@ -494,29 +719,30 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       enProcesoRequest.toPromise(),
       resueltosRequest.toPromise()
     ]).then(responses => {
-      // Combinar todos los incidentes (ya filtrados por taller en backend)
-      const allIncidents = [
+      // Combine and normalize all incidents through the unified adapter
+      const rawIncidents: ApiIncidentRaw[] = [
         ...(responses[0]?.data || []),
         ...(responses[1]?.data || []),
         ...(responses[2]?.data || []),
         ...(responses[3]?.data || [])
       ];
-      
-      console.log('✅ Workshop incidents loaded (backend filtered):', allIncidents.length);
-      
-      // ✅ Actualizar lista completa
-      this.allIncidents.set(allIncidents);
-      
-      // ✅ Aplicar filtro actual
+      const unifiedIncidents = rawIncidents.map(r => mapApiToIncident(r)) as UnifiedIncident[];
+
+      console.log('✅ Workshop incidents loaded (backend filtered):', unifiedIncidents.length);
+
+      // Update full list with unified data
+      this.allIncidents.set(unifiedIncidents);
+
+      // Apply current filter
       const filtered = this.filteredIncidents();
       this.incidents.set(filtered);
-      
+
       console.log('✅ Filter applied after load:', {
-        total: allIncidents.length,
+        total: unifiedIncidents.length,
         filtered: filtered.length,
         filter: this.selectedFilter()
       });
-      
+
       this.loading.set(false);
     }).catch(err => {
       console.error('Error loading incidents:', err);
@@ -541,21 +767,22 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       enProcesoRequest.toPromise(),
       resueltosRequest.toPromise()
     ]).then(responses => {
-      // Combinar todos los incidentes
-      const allIncidents = [
+      // Combine and normalize
+      const rawIncidents: ApiIncidentRaw[] = [
         ...(responses[0]?.data || []),
         ...(responses[1]?.data || []),
         ...(responses[2]?.data || []),
         ...(responses[3]?.data || [])
       ];
+      const unifiedIncidents = rawIncidents.map(r => mapApiToIncident(r)) as UnifiedIncident[];
+
+      console.log('All incidents loaded for map:', unifiedIncidents.length);
+
+      // Update full list
+      this.allIncidents.set(unifiedIncidents);
       
-      console.log('All incidents loaded for map:', allIncidents.length);
-      
-      // ✅ Actualizar lista completa
-      this.allIncidents.set(allIncidents);
-      
-      // ✅ Para el mapa, usar todos los incidentes
-      this.incidents.set(allIncidents);
+      // For map view, show all incidents
+      this.incidents.set(unifiedIncidents);
       
       // Actualizar marcadores si estamos en vista de mapa
       if (this.viewMode() === 'map') {
@@ -613,9 +840,10 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
         next: (response) => {
           console.log('Filtered incidents loaded for map:', response.data.length);
           
-          // ✅ Para filtros específicos en mapa, actualizar ambas listas
-          this.allIncidents.set(response.data);
-          this.incidents.set(response.data);
+          // Normalize and set filtered map results
+          const unified = response.data.map(mapApiToIncident);
+          this.allIncidents.set(unified);
+          this.incidents.set(unified);
           
           // Actualizar marcadores
           setTimeout(() => {
@@ -632,19 +860,25 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     }
   }
 
-  selectIncident(incident: Incident) {
+  selectIncident(incidentOrId: UnifiedIncident | number) {
     this.loadingDetail.set(true);
     this.selectedIncident.set(null);
     this.clearAiAnalysisState();
     
-    // Cargar el detalle completo del incidente
-    this.http.get<ApiDetailResponse>(`${this.apiUrl}/${incident.id}`).subscribe({
+    const incidentId = typeof incidentOrId === 'number' ? incidentOrId : incidentOrId.id;
+    
+    // Fetch full detail and normalize through the unified adapter
+    this.http.get<ApiDetailResponse>(`${this.apiUrl}/${incidentId}`).subscribe({
       next: (response) => {
-        this.selectedIncident.set(response.data);
+        const unified = mapApiToIncident(response.data);
+        this.selectedIncident.set(unified);
         this.loadingDetail.set(false);
-        this.loadIncidentAiAnalysisData(incident.id);
+        this.loadIncidentAiAnalysisData(incidentId);
         if (this.viewMode() === 'map') {
-          this.centerMapOnIncident(incident);
+          const incident = this.allIncidents().find(i => i.id === incidentId);
+          if (incident) {
+            this.centerMapOnIncident(incident);
+          }
         }
       },
       error: (err) => {
@@ -653,6 +887,14 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
         this.loadingDetail.set(false);
       }
     });
+  }
+
+  onViewDetail(incidentId: number): void {
+    this.router.navigate(['/workshop/incidents', incidentId]);
+  }
+
+  openMapFullScreen(): void {
+    this.router.navigate(['/workshop/incidents/map']);
   }
 
   clearAiAnalysisState() {
@@ -962,9 +1204,8 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     this.showLegend.set(!this.showLegend());
   }
 
-  centerMapOnIncident(incident: Incident) {
-    if (!this.map) return;
-    if (incident.latitude === null || incident.longitude === null) {
+  centerMapOnIncident(incident: UnifiedIncident) {
+    if (!incident.latitude || !incident.longitude || !this.map) {
       console.warn('Incident has no coordinates');
       return;
     }
@@ -972,7 +1213,7 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     this.map.setView(position, 15);
   }
 
-  initMiniMap(incident: Incident) {
+  initMiniMap(incident: UnifiedIncident) {
     try {
       const mapElement = document.getElementById(`mini-map-${incident.id}`);
       if (!mapElement || !this.L) return;
@@ -1019,7 +1260,8 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       'asignado': '#3b82f6',
       'en_proceso': '#8b5cf6',
       'resuelto': '#10b981',
-      'cancelado': '#6b7280'
+      'cancelado': '#6b7280',
+      'sin_taller_disponible': '#dc2626'
     };
     return colors[estado] || '#6b7280';
   }
@@ -1032,9 +1274,12 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     const labels: Record<string, string> = {
       'pendiente': 'Pendiente',
       'asignado': 'Asignado',
+      'aceptado': 'Aceptado',
+      'en_camino': 'En Camino',
       'en_proceso': 'En Proceso',
       'resuelto': 'Resuelto',
-      'cancelado': 'Cancelado'
+      'cancelado': 'Cancelado',
+      'sin_taller_disponible': 'Sin Taller'
     };
     return labels[estado] || estado;
   }
@@ -1045,7 +1290,8 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       'asignado': 'info',
       'en_proceso': 'primary',
       'resuelto': 'success',
-      'cancelado': 'secondary'
+      'cancelado': 'secondary',
+      'sin_taller_disponible': 'danger'
     };
     return colors[estado] || 'secondary';
   }
@@ -1098,7 +1344,7 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     });
   }
 
-  openAcceptModal(incident: Incident) {
+  openAcceptModal(incident: UnifiedIncident) {
     // Usar el incidente de la lista actual en lugar del parámetro
     const currentIncident = this.incidents().find(i => i.id === incident.id);
     if (currentIncident) {
@@ -1135,16 +1381,24 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
           : 'Solicitud aceptada. Ahora puedes asignar un técnico manualmente.';
         this.success.set(message);
         
-        // ✅ NUEVO: Actualizar selectedIncident con los datos de respuesta
-        // Esto preserva los datos de recomendación de IA y el estado actualizado
+        // Update selected incident with normalized response data
         if (response.data) {
-          this.selectedIncident.set(response.data);
-          console.log('✅ Selected incident updated with response data:', response.data);
+          const unified = mapApiToIncident(response.data);
+          this.selectedIncident.set(unified);
+
+          // Partial update: update incident status in full list instead of reloading
+          const all = this.allIncidents();
+          const idx = all.findIndex(i => i.id === incident.id);
+          if (idx !== -1) {
+            const updated = [...all];
+            updated[idx] = { ...updated[idx], estado: unified.estado, estado_actual: unified.estado, updated_at: unified.updated_at };
+            this.allIncidents.set(updated);
+          }
+          console.log('✅ Selected incident updated with response data:', unified);
         }
-        
+
         this.closeAcceptModal();
-        this.loadStatusCounts(); // Actualizar contadores
-        this.loadIncidents(); // Recargar lista
+        this.loadStatusCounts();
         this.isProcessing.set(false);
         
         // Clear success message after 5 seconds
@@ -1158,7 +1412,7 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     });
   }
 
-  openRejectModal(incident: Incident) {
+  openRejectModal(incident: UnifiedIncident) {
     this.selectedIncident.set(incident);
     this.showRejectModal.set(true);
     this.rejectReason.set('');
@@ -1187,9 +1441,12 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.success.set('Solicitud rechazada. El sistema buscará otro taller.');
         this.closeRejectModal();
+
+        // Partial update: remove rejected incident from list
+        const all = this.allIncidents();
+        this.allIncidents.set(all.filter(i => i.id !== incident.id));
         this.selectedIncident.set(null);
-        this.loadStatusCounts(); // Actualizar contadores
-        this.loadIncidents();
+        this.loadStatusCounts();
         this.isProcessing.set(false);
         
         // Clear success message after 5 seconds
@@ -1203,7 +1460,7 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     });
   }
 
-  openAssignTechnicianModal(incident: IncidentDetail) {
+  openAssignTechnicianModal(incident: UnifiedIncident) {
     this.selectedIncident.set(incident);
     this.showAssignTechnicianModal.set(true);
     this.selectedTechnicianId.set(null);
@@ -1248,9 +1505,17 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
       next: (response) => {
         this.success.set('Técnico asignado exitosamente. El incidente está en proceso.');
         this.closeAssignTechnicianModal();
+
+        // Partial update: update incident status to en_proceso
+        const all = this.allIncidents();
+        const idx = all.findIndex(i => i.id === incident.id);
+        if (idx !== -1) {
+          const updated = [...all];
+          updated[idx] = { ...updated[idx], estado: 'en_proceso', estado_actual: 'en_proceso', tecnico_id: technicianId };
+          this.allIncidents.set(updated);
+        }
         this.selectedIncident.set(null);
         this.loadStatusCounts();
-        this.loadIncidents();
         this.isProcessing.set(false);
         
         setTimeout(() => this.success.set(null), 5000);
@@ -1263,169 +1528,55 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
     });
   }
 
-  openTrackingView(incident: IncidentDetail) {
+  openTrackingView(incident: UnifiedIncident) {
     // Navegar a la vista de seguimiento con mapa completo y chat
     this.router.navigate(['/tracking/incident', incident.id]);
   }
 
   /**
-   * ✅ Iniciar verificador de timeouts
-   * Verifica cada segundo si algún incidente pendiente ha excedido el tiempo de respuesta
+   * ✅ Start timeout checker - now reactive via WebSocket events
+   * The backend publishes incident.assignment_timeout via EventPublisher.
+   * IncidentsService handles the event and updates incidents list reactively.
+   * No client-side polling needed.
    */
   startTimeoutChecker() {
-    // Verificar inmediatamente
-    this.checkTimeouts();
-    
-    // Luego verificar cada segundo
-    this.timeoutCheckInterval = setInterval(() => {
-      this.checkTimeouts();
-    }, 1000);
+    this.incidentsService.incidentTimeout$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((event: any) => {
+        const timedOutIncidentId = event.incident_id;
+        const currentAll = this.allIncidents();
+        const idx = currentAll.findIndex(i => i.id === timedOutIncidentId);
+
+        if (idx !== -1 && !(currentAll[idx] as any)._isTimedOut) {
+          const updated = [...currentAll];
+          updated[idx] = {
+            ...updated[idx],
+            _isTimedOut: true,
+            estado: 'sin_taller_disponible' as any,
+            estado_actual: 'sin_taller_disponible' as any,
+          };
+          this.allIncidents.set(updated);
+          this.applyCurrentFilter();
+          console.log(`Incident #${timedOutIncidentId} timed out (via WebSocket event)`);
+        }
+      });
+    console.log('Timeout checker initialized (reactive via WebSocket events)');
   }
 
   /**
-   * ✅ Detener verificador de timeouts
+   * ✅ Stop timeout checker
+   * No-op since timeouts are now managed via WebSocket event subscriptions
+   * (unsubscribed automatically via takeUntilDestroyed)
    */
   stopTimeoutChecker() {
-    if (this.timeoutCheckInterval) {
-      clearInterval(this.timeoutCheckInterval);
-      this.timeoutCheckInterval = null;
-    }
-  }
-
-  /**
-   * ✅ Verificar timeouts de incidentes pendientes
-   * Verifica si los incidentes han excedido el tiempo de respuesta
-   * y notifica al backend para disparar la reasignación automática
-   */
-  checkTimeouts() {
-    const currentIncidents = this.allIncidents(); // ✅ Usar lista completa
-    let hasChanges = false;
-
-    const updatedIncidents = currentIncidents.map(incident => {
-      // Solo verificar incidentes pendientes con técnico sugerido que tenga timeout_at
-      if (incident.estado_actual === 'pendiente' && 
-          incident.suggested_technician && 
-          incident.suggested_technician.timeout_at) {
-        
-        const timeoutAt = new Date(incident.suggested_technician.timeout_at);
-        const now = new Date();
-        
-        // Marcar como timeout si el tiempo se acabó
-        const wasTimedOut = incident._isTimedOut || false;
-        const isTimedOut = now.getTime() >= timeoutAt.getTime();
-
-        // ✅ NUEVO: Notificar al backend cuando ocurre el timeout
-        if (isTimedOut && !wasTimedOut) {
-          console.log(`⏰ Incident #${incident.id} timed out - notifying backend for reassignment`);
-          
-          // Notificar al backend para que dispare la reasignación automática
-          this.http.post(`${this.apiUrl}/${incident.id}/timeout`, {}).subscribe({
-            next: () => {
-              console.log(`✅ Backend notified of timeout for incident #${incident.id}`);
-              console.log(`🔄 Automatic reassignment should be triggered by backend`);
-            },
-            error: (err) => {
-              console.error(`❌ Error notifying timeout for incident #${incident.id}:`, err);
-              // No bloquear la UI si falla la notificación
-              // El backend tiene su propio sistema de verificación de timeouts
-            }
-          });
-        }
-
-        if (isTimedOut !== wasTimedOut) {
-          hasChanges = true;
-          console.log(`⚠️ Incident #${incident.id} timeout status changed: ${wasTimedOut} → ${isTimedOut}`);
-        }
-
-        return {
-          ...incident,
-          _isTimedOut: isTimedOut
-        };
-      }
-
-      return incident;
-    });
-
-    // Solo actualizar si hay cambios en el estado de timeout
-    if (hasChanges) {
-      // ✅ Actualizar lista completa
-      this.allIncidents.set(updatedIncidents);
-      
-      // ✅ Aplicar filtro automáticamente
-      const filtered = this.filteredIncidents();
-      this.incidents.set(filtered);
-    }
+    console.log('⏹️ Timeout checker stopped');
   }
 
   /**
    * ✅ Verificar si un incidente está en timeout
    */
-  isIncidentTimedOut(incident: Incident): boolean {
+  isIncidentTimedOut(incident: UnifiedIncident): boolean {
     return incident._isTimedOut === true;
   }
 
-  /**
-   * ✅ Manejar evento de incidente asignado
-   * CORREGIDO: Solo actualizar contadores, IncidentsService maneja el estado
-   */
-  private handleIncidentAssigned(data: any): void {
-    console.log('📨 Incident assigned event - updating counters only');
-    // ✅ Solo actualizar contadores, NO recargar toda la lista
-    this.loadStatusCounts();
-  }
-
-  /**
-   * ✅ Manejar evento de asignación aceptada
-   * 
-   * NOTA: IncidentsService ya maneja la actualización del estado del incidente.
-   * Este handler solo actualiza los contadores de la UI.
-   */
-  private handleAssignmentAccepted(data: any): void {
-    console.log('📨 Assignment accepted event - updating counters only');
-    this.loadStatusCounts();
-  }
-
-  /**
-   * ✅ Manejar evento de asignación rechazada
-   * 
-   * NOTA: IncidentsService ya maneja la actualización del estado del incidente.
-   * Este handler solo actualiza los contadores de la UI.
-   */
-  private handleAssignmentRejected(data: any): void {
-    console.log('📨 Assignment rejected event - updating counters only');
-    this.loadStatusCounts();
-  }
-
-  /**
-   * ✅ Manejar evento de timeout de asignación
-   * 
-   * NOTA: IncidentsService ya maneja la actualización del estado del incidente.
-   * Este handler solo actualiza los contadores de la UI.
-   */
-  private handleAssignmentTimeout(data: any): void {
-    console.log('📨 Assignment timeout event - updating counters only');
-    this.loadStatusCounts();
-  }
-
-  /**
-   * ✅ Manejar evento de búsqueda de taller
-   * 
-   * NOTA: IncidentsService ya maneja este evento.
-   */
-  private handleSearchingWorkshop(data: any): void {
-    console.log('📨 Searching workshop event - handled by IncidentsService');
-  }
-
-  /**
-   * ✅ Manejar evento de sin taller disponible
-   * 
-   * NOTA: IncidentsService ya maneja la actualización del estado del incidente.
-   * Este handler solo actualiza los contadores de la UI.
-   */
-  private handleNoWorkshopAvailable(data: any): void {
-    console.log('📨 No workshop available event - updating counters only');
-    this.loadStatusCounts();
-  }
-
 }
-

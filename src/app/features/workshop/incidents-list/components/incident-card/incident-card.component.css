@@ -1,31 +1,20 @@
-/* Incident Card Component Styles */
-
 :host {
   display: block;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  outline: none;
 }
 
-:host:hover {
-  transform: translateY(-2px);
-}
-
-:host:focus {
-  outline: none; /* Remove default outline */
-}
-
-:host:focus-visible {
-  outline: 3px solid #ea580c; /* Orange 600 - WCAG compliant */
+:host:focus-visible .incident-card {
+  outline: 3px solid #F97316;
   outline-offset: 2px;
-  border-radius: 8px;
 }
 
 .incident-card {
-  position: relative;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
   padding: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: all 0.2s ease;
   height: 100%;
   display: flex;
@@ -34,47 +23,15 @@
 }
 
 .incident-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: #3b82f6;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
-/* Timeout Badge */
-.timeout-badge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  z-index: 10;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  animation: pulse 2s infinite;
+.incident-card:focus {
+  outline: none;
 }
 
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.8;
-  }
-}
-
-.timeout-icon {
-  font-size: 12px;
-}
-
-.timeout-text {
-  letter-spacing: 0.5px;
-}
-
-/* Card Header */
+/* Header */
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -82,411 +39,263 @@
   gap: 8px;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .incident-id {
   font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.id-label {
-  color: #3b82f6;
-}
-
-.priority-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 11px;
   font-weight: 700;
-  color: white;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: #0F172A;
 }
 
-/* Card Body */
-.card-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+/* Status Badge (Pill style) */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
 }
 
+.badge-gray {
+  background: #F1F5F9;
+  color: #475569;
+}
+
+.badge-warning {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.badge-blue {
+  background: #DBEAFE;
+  color: #1E40AF;
+}
+
+.badge-green {
+  background: #DCFCE7;
+  color: #166534;
+}
+
+.badge-purple {
+  background: #EDE9FE;
+  color: #5B21B6;
+}
+
+.badge-orange {
+  background: #FFEDD5;
+  color: #9A3412;
+}
+
+.badge-emerald {
+  background: #D1FAE5;
+  color: #065F46;
+}
+
+.badge-red {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+/* Timeout Indicator */
+.timeout-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #FEF3C7;
+  border: 1px solid #FCD34D;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #92400E;
+  letter-spacing: 0.025em;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.timeout-indicator svg {
+  width: 12px;
+  height: 12px;
+  color: #F59E0B;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Description */
 .description {
   font-size: 14px;
-  color: #4b5563;
+  font-weight: 400;
   line-height: 1.5;
+  color: #334155;
   margin: 0;
-  word-wrap: break-word;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  flex: 1;
 }
 
-.metadata {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.metadata-item {
+/* Location */
+.location {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #6b7280;
+  color: #64748B;
+  overflow: hidden;
 }
 
-.metadata-icon {
-  font-size: 14px;
+.location svg {
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
+  color: #94A3B8;
 }
 
-.metadata-text {
+.location span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Card Footer */
+/* Footer */
 .card-footer {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
   padding-top: 8px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid #F1F5F9;
 }
 
-.status-badge {
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 11px;
+.time-elapsed,
+.countdown-timer {
+  font-size: 12px;
   font-weight: 600;
-  color: white;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
 }
 
-.time-remaining {
-  display: flex;
+.time-elapsed {
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+.countdown-timer {
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
-  background: #dbeafe;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #1e40af;
+  color: #D97706;
 }
 
-.time-icon {
+.countdown-timer svg {
+  width: 12px;
+  height: 12px;
+  color: #F59E0B;
+}
+
+.countdown-timer.expired {
+  color: #DC2626;
+}
+
+.countdown-timer.expired svg {
+  color: #DC2626;
+}
+
+.countdown-warning {
+  color: #DC2626;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.countdown-warning svg {
+  color: #DC2626;
+}
+
+.view-detail {
   font-size: 12px;
-}
-
-.time-text {
-  white-space: nowrap;
-}
-
-.no-assignment-badge {
-  padding: 4px 10px;
-  background: #fef3c7;
-  border: 1px solid #fbbf24;
-  border-radius: 4px;
-  font-size: 11px;
+  color: #3B82F6;
   font-weight: 600;
-  color: #92400e;
+  transition: text-decoration 0.15s ease;
 }
 
-/* Host state classes */
-:host(.has-timeout) .incident-card {
-  border-color: #f59e0b;
-  background: #fffbeb;
+.incident-card:hover .view-detail {
+  text-decoration: underline;
 }
 
-:host(.high-priority) .incident-card {
-  border-left: 4px solid #ef4444;
+.view-detail-btn {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: #3B82F6;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
 }
 
-/* Responsive adjustments */
+.view-detail-btn:hover {
+  background: #EFF6FF;
+  text-decoration: underline;
+}
+
+/* Responsive */
 @media (max-width: 768px) {
-  .incident-card {
-    padding: 12px;
-  }
-
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .timeout-badge {
-    top: 4px;
-    right: 4px;
-    font-size: 10px;
-    padding: 3px 6px;
-  }
-}
-
-/* Focus Visible Styles for Interactive Elements */
-
-.priority-badge:focus-visible,
-.status-badge:focus-visible,
-.timeout-badge:focus-visible,
-.time-remaining:focus-visible,
-.no-assignment-badge:focus-visible {
-  outline: 3px solid #ea580c;
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-.metadata-icon:focus-visible {
-  outline: 2px solid #ea580c;
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-/* Enhanced focus for high contrast mode */
-@media (prefers-contrast: high) {
-  :host:focus-visible {
-    outline: 4px solid #000000;
-    outline-offset: 3px;
-  }
-  
-  .priority-badge:focus-visible,
-  .status-badge:focus-visible,
-  .timeout-badge:focus-visible {
-    outline: 3px solid #000000;
-    outline-offset: 2px;
-  }
-}
-
-/* Focus visible animation */
-@keyframes focusRing {
-  0% {
-    outline-offset: 2px;
-  }
-  50% {
-    outline-offset: 4px;
-  }
-  100% {
-    outline-offset: 2px;
-  }
-}
-
-:host:focus-visible {
-  animation: focusRing 0.6s ease-in-out;
-}
-
-/* ============================================================================
-   ENHANCED RESPONSIVE BREAKPOINTS
-   ============================================================================ */
-
-/* Tablet adjustments (768px - 1023px) */
-@media (min-width: 768px) and (max-width: 1023px) {
   .incident-card {
     padding: 14px;
   }
-  
-  .card-header {
-    gap: 6px;
-  }
-  
+
   .incident-id {
     font-size: 15px;
   }
-  
-  .priority-badge {
-    padding: 3px 10px;
+
+  .status-badge {
     font-size: 10px;
+    padding: 3px 8px;
   }
-  
+
   .description {
     font-size: 13px;
+    -webkit-line-clamp: 2;
   }
-  
-  .metadata-item {
+
+  .location {
+    font-size: 11px;
+  }
+
+  .time-elapsed,
+  .view-detail {
     font-size: 11px;
   }
 }
 
-/* Mobile landscape (480px - 767px) */
-@media (min-width: 480px) and (max-width: 767px) {
+@media (max-width: 480px) {
   .incident-card {
     padding: 12px;
     gap: 10px;
   }
-  
-  .card-header {
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-  }
-  
-  .incident-id {
-    font-size: 14px;
-  }
-  
-  .priority-badge {
-    padding: 3px 8px;
-    font-size: 9px;
-  }
-  
-  .timeout-badge {
-    top: 6px;
-    right: 6px;
-    font-size: 9px;
-    padding: 3px 6px;
-  }
-  
-  .description {
-    font-size: 13px;
-    line-height: 1.4;
-  }
-  
-  .metadata {
-    gap: 4px;
-  }
-  
-  .metadata-item {
-    font-size: 11px;
-  }
-  
-  .card-footer {
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  
-  .status-badge {
-    font-size: 10px;
-    padding: 3px 8px;
-  }
-  
-  .time-remaining {
-    font-size: 10px;
-    padding: 3px 6px;
-  }
-  
-  .no-assignment-badge {
-    font-size: 10px;
-    padding: 3px 8px;
-  }
-}
 
-/* Small mobile (< 480px) */
-@media (max-width: 479px) {
-  :host {
-    font-size: 14px;
-  }
-  
-  .incident-card {
-    padding: 10px;
-    gap: 8px;
-  }
-  
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
+  .header-left {
     gap: 6px;
   }
-  
+
   .incident-id {
-    font-size: 13px;
+    font-size: 14px;
   }
-  
-  .priority-badge {
-    padding: 2px 6px;
-    font-size: 9px;
-  }
-  
-  .timeout-badge {
-    top: 4px;
-    right: 4px;
-    font-size: 8px;
-    padding: 2px 5px;
-    gap: 2px;
-  }
-  
-  .timeout-icon {
-    font-size: 10px;
-  }
-  
-  .description {
-    font-size: 12px;
-    line-height: 1.4;
-  }
-  
-  .metadata {
-    gap: 3px;
-  }
-  
-  .metadata-item {
-    font-size: 10px;
-  }
-  
-  .metadata-icon {
-    font-size: 12px;
-  }
-  
-  .card-footer {
-    gap: 4px;
-    padding-top: 6px;
-  }
-  
+
   .status-badge {
     font-size: 9px;
     padding: 2px 6px;
   }
-  
-  .time-remaining {
-    font-size: 9px;
-    padding: 2px 5px;
-  }
-  
-  .time-icon {
-    font-size: 10px;
-  }
-  
-  .no-assignment-badge {
-    font-size: 9px;
-    padding: 2px 6px;
-  }
-}
 
-/* Touch device optimizations */
-@media (hover: none) and (pointer: coarse) {
-  :host {
-    cursor: default;
-  }
-  
-  .incident-card {
-    padding: 14px;
-  }
-  
-  /* Larger touch targets */
-  .priority-badge,
-  .status-badge,
-  .timeout-badge {
-    min-height: 28px;
-    padding: 6px 10px;
-  }
-}
-
-/* Print styles */
-@media print {
-  :host {
-    page-break-inside: avoid;
-  }
-  
-  .incident-card {
-    border: 2px solid #000;
-    box-shadow: none;
-  }
-  
-  .timeout-badge {
-    border: 1px solid #000;
-  }
-  
-  :host:hover {
-    transform: none;
-  }
-  
-  .incident-card:hover {
-    box-shadow: none;
-    border-color: #e5e7eb;
+  .description {
+    font-size: 12px;
   }
 }

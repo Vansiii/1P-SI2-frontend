@@ -1,0 +1,656 @@
+<div class="monitoring-container">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <div class="header-text">
+        <h1 class="page-title">
+          <svg class="title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="9" y1="21" x2="9" y2="9"/>
+          </svg>
+          Monitorear Sistema
+        </h1>
+        <p class="page-subtitle">Panel de monitoreo en tiempo real del sistema</p>
+      </div>
+      <div class="header-actions">
+        @if (lastUpdate()) {
+          <span class="last-update">
+             Última actualización: {{ lastUpdate()!.toISOString() | formatTime }}
+          </span>
+        }
+        <button class="btn btn-secondary" (click)="refreshAll()" [disabled]="isLoading()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Actualizar Todo
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Alert -->
+  @if (hasError()) {
+    <div class="alert alert-error">
+      <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 8v4m0 4h.01"/>
+      </svg>
+      <div class="alert-content">
+        <p class="alert-title">Error</p>
+        <p class="alert-message">{{ errorMessage() }}</p>
+      </div>
+      <button class="alert-close" (click)="monitoringService.clearErrors()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  }
+
+  <!-- Metrics KPI Cards -->
+  @if (metrics()) {
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-icon primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ metrics()!.active_incidents }}</div>
+          <div class="metric-label">Incidentes Activos</div>
+        </div>
+      </div>
+
+      <div class="metric-card alert">
+        <div class="metric-icon danger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ metrics()!.unassigned_incidents }}</div>
+          <div class="metric-label">Sin Taller Disponible</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon warning">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ metrics()!.pending_incidents }}</div>
+          <div class="metric-label">Pendientes de Asignación</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon info">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ metrics()!.assigned_incidents }}</div>
+          <div class="metric-label">Asignados</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ metrics()!.in_progress_incidents }}</div>
+          <div class="metric-label">En Proceso</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon success">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ metrics()!.resolved_today }}</div>
+          <div class="metric-label">Resueltos Hoy</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon success">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ metrics()!.available_workshops }}</div>
+          <div class="metric-label">Talleres Disponibles</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon warning">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ metrics()!.busy_workshops }}</div>
+          <div class="metric-label">Talleres Ocupados</div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-icon secondary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">{{ metrics()!.offline_workshops }}</div>
+          <div class="metric-label">Talleres Fuera de Línea</div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Tabs Navigation -->
+  <div class="tabs-container">
+    <div class="tabs">
+      <button 
+        class="tab" 
+        [class.active]="currentTab() === 'overview'"
+        (click)="setTab('overview')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <line x1="3" y1="9" x2="21" y2="9"/>
+          <line x1="9" y1="21" x2="9" y2="9"/>
+        </svg>
+        Vista General
+      </button>
+      <button 
+        class="tab" 
+        [class.active]="currentTab() === 'incidents'"
+        (click)="setTab('incidents')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        Incidentes
+        @if (incidents()) {
+          <span class="tab-badge">{{ incidents()!.total }}</span>
+        }
+      </button>
+      <button 
+        class="tab" 
+        [class.active]="currentTab() === 'workshops'"
+        (click)="setTab('workshops')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        Talleres
+        @if (workshops()) {
+          <span class="tab-badge">{{ workshops()!.total }}</span>
+        }
+      </button>
+      <button 
+        class="tab" 
+        [class.active]="currentTab() === 'charts'"
+        (click)="setTab('charts')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="20" x2="18" y2="10"/>
+          <line x1="12" y1="20" x2="12" y2="4"/>
+          <line x1="6" y1="20" x2="6" y2="14"/>
+        </svg>
+        Gráficos
+      </button>
+    </div>
+  </div>
+
+  <!-- Tab Content -->
+  <div class="tab-content">
+    <!-- Overview Tab -->
+    @if (currentTab() === 'overview') {
+      <div class="overview-content">
+        <div class="section-header">
+          <h2>Resumen del Sistema</h2>
+          <p>Vista general de métricas y estado del sistema</p>
+        </div>
+        
+        @if (metrics()) {
+          <div class="overview-grid">
+            <div class="overview-card">
+              <h3>Estado de Incidentes</h3>
+              <div class="stats-list">
+                <div class="stat-item">
+                  <span class="stat-label">Total Activos:</span>
+                  <span class="stat-value">{{ metrics()!.active_incidents }}</span>
+                </div>
+                <div class="stat-item alert">
+                  <span class="stat-label">Sin Taller:</span>
+                  <span class="stat-value">{{ metrics()!.unassigned_incidents }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Pendientes:</span>
+                  <span class="stat-value">{{ metrics()!.pending_incidents }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Asignados:</span>
+                  <span class="stat-value">{{ metrics()!.assigned_incidents }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">En Proceso:</span>
+                  <span class="stat-value">{{ metrics()!.in_progress_incidents }}</span>
+                </div>
+                <div class="stat-item success">
+                  <span class="stat-label">Resueltos Hoy:</span>
+                  <span class="stat-value">{{ metrics()!.resolved_today }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="overview-card">
+              <h3>Estado de Talleres</h3>
+              <div class="stats-list">
+                <div class="stat-item success">
+                  <span class="stat-label">Disponibles:</span>
+                  <span class="stat-value">{{ metrics()!.available_workshops }}</span>
+                </div>
+                <div class="stat-item warning">
+                  <span class="stat-label">Ocupados:</span>
+                  <span class="stat-value">{{ metrics()!.busy_workshops }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Fuera de Línea:</span>
+                  <span class="stat-value">{{ metrics()!.offline_workshops }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Incidents Tab -->
+    @if (currentTab() === 'incidents') {
+      <div class="incidents-content">
+        <div class="section-header">
+          <h2>Todos los Incidentes</h2>
+          <button class="btn btn-secondary" (click)="refreshIncidents()" [disabled]="isLoading()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Actualizar
+          </button>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-container">
+          <div class="filter-group">
+            <input 
+              type="text" 
+              class="filter-input" 
+              placeholder="Buscar por ID, descripción o ubicación..."
+              [value]="searchTerm()"
+              (input)="searchTerm.set($any($event.target).value)"
+              (keyup.enter)="applyFilters()">
+          </div>
+          
+          <div class="filter-group">
+            <select 
+              class="filter-select"
+              [value]="selectedStatus() || ''"
+              (change)="selectedStatus.set($any($event.target).value || null); applyFilters()">
+              <option value="">Todos los estados</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="asignado">Asignado</option>
+              <option value="en_proceso">En Proceso</option>
+              <option value="en_camino">En Camino</option>
+              <option value="en_sitio">En Sitio</option>
+              <option value="resuelto">Resuelto</option>
+              <option value="cancelado">Cancelado</option>
+              <option value="sin_taller_disponible">Sin Taller</option>
+            </select>
+          </div>
+
+          <button class="btn btn-secondary" (click)="clearFilters()">
+            Limpiar Filtros
+          </button>
+        </div>
+
+        <!-- Incidents List -->
+        @if (isLoading()) {
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Cargando incidentes...</p>
+          </div>
+        } @else if (filteredIncidents().length === 0) {
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 8v4m0 4h.01"/>
+            </svg>
+            <h3>No hay incidentes</h3>
+            <p>No se encontraron incidentes con los filtros aplicados</p>
+          </div>
+        } @else {
+          <div class="incidents-grid">
+            @for (incident of filteredIncidents(); track incident.id) {
+              <div class="incident-card" (click)="viewIncidentDetail(incident.id)">
+                <div class="incident-header">
+                  <span class="incident-id">#{{ incident.id }}</span>
+                  <span class="status-badge" [class]="'status-' + getStatusColor(incident.estado_actual)">
+                    {{ getStatusLabel(incident.estado_actual) }}
+                  </span>
+                </div>
+                
+                <p class="incident-description">
+                  {{ truncate(incident.descripcion, 100) }}
+                </p>
+
+                @if (incident.direccion_referencia) {
+                  <div class="incident-location">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <span>{{ truncate(incident.direccion_referencia, 50) }}</span>
+                  </div>
+                }
+
+                <div class="incident-footer">
+                  <span class="incident-time">
+                    {{ formatDate(incident.created_at) }}
+                  </span>
+                  <button class="btn-view-detail">
+                    Ver Detalle
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M9 5l7 7-7 7"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Workshops Tab -->
+    @if (currentTab() === 'workshops') {
+      <div class="workshops-content">
+        <div class="section-header">
+          <h2>Talleres Registrados</h2>
+          <button class="btn btn-secondary" (click)="refreshWorkshops()" [disabled]="isLoading()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Actualizar
+          </button>
+        </div>
+
+        @if (isLoading()) {
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Cargando talleres...</p>
+          </div>
+        } @else if (workshops() && workshops()!.workshops.length === 0) {
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            </svg>
+            <h3>No hay talleres registrados</h3>
+          </div>
+        } @else if (workshops()) {
+          <div class="workshops-grid">
+            @for (workshop of workshops()!.workshops; track workshop.id) {
+              <div class="workshop-card">
+                <div class="workshop-header">
+                  <h3>{{ workshop.workshop_name }}</h3>
+                  <span class="availability-badge" [class]="'status-' + getAvailabilityColor(workshop.availability_status)">
+                    {{ getAvailabilityLabel(workshop.availability_status) }}
+                  </span>
+                </div>
+
+                <div class="workshop-info">
+                  <div class="info-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <span>{{ truncate(workshop.address, 40) }}</span>
+                  </div>
+
+                  <div class="info-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 6v6l4 2"/>
+                    </svg>
+                    <span>Radio: {{ workshop.coverage_radius_km }} km</span>
+                  </div>
+                </div>
+
+                <div class="workshop-stats">
+                  <div class="stat">
+                    <span class="stat-label">Técnicos Totales</span>
+                    <span class="stat-value">{{ workshop.total_technicians }}</span>
+                  </div>
+                  <div class="stat success">
+                    <span class="stat-label">Disponibles</span>
+                    <span class="stat-value">{{ workshop.available_technicians }}</span>
+                  </div>
+                  <div class="stat warning">
+                    <span class="stat-label">Ocupados</span>
+                    <span class="stat-value">{{ workshop.busy_technicians }}</span>
+                  </div>
+                  <div class="stat primary">
+                    <span class="stat-label">Incidentes Activos</span>
+                    <span class="stat-value">{{ workshop.active_incidents }}</span>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Charts Tab -->
+    @if (currentTab() === 'charts') {
+      <div class="charts-content">
+        <div class="section-header">
+          <h2>Gráficos y Estadísticas</h2>
+          <p>Visualización de datos del sistema en tiempo real</p>
+        </div>
+
+        @if (isLoading()) {
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Cargando gráficos...</p>
+          </div>
+        } @else if (charts()) {
+          <div class="charts-grid">
+            <!-- Incidents by Status - Pie Chart -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3>Incidentes por Estado</h3>
+                <p>Distribución de incidentes según su estado actual</p>
+              </div>
+              <div class="chart-container">
+                @if (incidentsByStatusChartData().length > 0) {
+                  <ngx-charts-pie-chart
+                    [view]="chartView"
+                    [results]="incidentsByStatusChartData()"
+                    [scheme]="chartColorScheme"
+                    [gradient]="chartGradient"
+                    [legend]="chartShowLegend"
+                    [legendPosition]="chartLegendPosition"
+                    [labels]="chartShowLabels"
+                    [doughnut]="chartIsDoughnut"
+                    (select)="onChartSelect($event)"
+                    (activate)="onChartActivate($event)"
+                    (deactivate)="onChartDeactivate($event)">
+                  </ngx-charts-pie-chart>
+                } @else {
+                  <div class="chart-empty">
+                    <p>No hay datos disponibles</p>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Incidents by Category - Bar Chart -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3>Incidentes por Categoría</h3>
+                <p>Top 10 categorías de incidentes detectadas por IA</p>
+              </div>
+              <div class="chart-container">
+                @if (incidentsByCategoryChartData().length > 0) {
+                  <ngx-charts-bar-vertical
+                    [view]="chartView"
+                    [results]="incidentsByCategoryChartData()"
+                    [scheme]="chartColorScheme"
+                    [gradient]="chartGradient"
+                    [xAxis]="chartShowXAxis"
+                    [yAxis]="chartShowYAxis"
+                    [legend]="false"
+                    [showXAxisLabel]="chartShowXAxisLabel"
+                    [showYAxisLabel]="chartShowYAxisLabel"
+                    [xAxisLabel]="'Categoría'"
+                    [yAxisLabel]="'Cantidad'"
+                    (select)="onChartSelect($event)"
+                    (activate)="onChartActivate($event)"
+                    (deactivate)="onChartDeactivate($event)">
+                  </ngx-charts-bar-vertical>
+                } @else {
+                  <div class="chart-empty">
+                    <p>No hay datos disponibles</p>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Incidents by Priority - Doughnut Chart -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3>Incidentes por Prioridad</h3>
+                <p>Distribución de incidentes según prioridad asignada por IA</p>
+              </div>
+              <div class="chart-container">
+                @if (incidentsByPriorityChartData().length > 0) {
+                  <ngx-charts-pie-chart
+                    [view]="chartView"
+                    [results]="incidentsByPriorityChartData()"
+                    [scheme]="chartColorScheme"
+                    [gradient]="chartGradient"
+                    [legend]="chartShowLegend"
+                    [legendPosition]="chartLegendPosition"
+                    [labels]="chartShowLabels"
+                    [doughnut]="true"
+                    (select)="onChartSelect($event)"
+                    (activate)="onChartActivate($event)"
+                    (deactivate)="onChartDeactivate($event)">
+                  </ngx-charts-pie-chart>
+                } @else {
+                  <div class="chart-empty">
+                    <p>No hay datos disponibles</p>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Workshops by Status - Pie Chart -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <h3>Talleres por Estado</h3>
+                <p>Distribución de talleres según su disponibilidad</p>
+              </div>
+              <div class="chart-container">
+                @if (workshopsByStatusChartData().length > 0) {
+                  <ngx-charts-pie-chart
+                    [view]="chartView"
+                    [results]="workshopsByStatusChartData()"
+                    [scheme]="chartColorScheme"
+                    [gradient]="chartGradient"
+                    [legend]="chartShowLegend"
+                    [legendPosition]="chartLegendPosition"
+                    [labels]="chartShowLabels"
+                    [doughnut]="chartIsDoughnut"
+                    (select)="onChartSelect($event)"
+                    (activate)="onChartActivate($event)"
+                    (deactivate)="onChartDeactivate($event)">
+                  </ngx-charts-pie-chart>
+                } @else {
+                  <div class="chart-empty">
+                    <p>No hay datos disponibles</p>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Incidents Timeline - Line Chart -->
+            <div class="chart-card chart-card-wide">
+              <div class="chart-header">
+                <h3>Línea de Tiempo de Incidentes</h3>
+                <p>Incidentes activos y resueltos en las últimas 24 horas</p>
+              </div>
+              <div class="chart-container">
+                @if (incidentsTimelineChartData().length > 0) {
+                  <ngx-charts-line-chart
+                    [view]="[1400, 400]"
+                    [results]="incidentsTimelineChartData()"
+                    [scheme]="chartColorScheme"
+                    [gradient]="chartGradient"
+                    [xAxis]="chartShowXAxis"
+                    [yAxis]="chartShowYAxis"
+                    [legend]="chartShowLegend"
+                    [showXAxisLabel]="chartShowXAxisLabel"
+                    [showYAxisLabel]="chartShowYAxisLabel"
+                    [xAxisLabel]="'Hora'"
+                    [yAxisLabel]="'Cantidad'"
+                    [autoScale]="true"
+                    (select)="onChartSelect($event)"
+                    (activate)="onChartActivate($event)"
+                    (deactivate)="onChartDeactivate($event)">
+                  </ngx-charts-line-chart>
+                } @else {
+                  <div class="chart-empty">
+                    <p>No hay datos disponibles</p>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        } @else {
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="20" x2="18" y2="10"/>
+              <line x1="12" y1="20" x2="12" y2="4"/>
+              <line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+            <h3>No hay datos de gráficos</h3>
+            <p>No se pudieron cargar los datos de los gráficos</p>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

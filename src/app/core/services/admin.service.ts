@@ -81,10 +81,10 @@ export class AdminService {
    */
   getWorkshopTechnicians(workshopId: number): Observable<Technician[]> {
     return this.httpClient
-      .get<ApiResponse<{ users: Technician[] }>>(
-        `${this.apiBaseUrl}/users?user_type=technician&workshop_id=${workshopId}`
+      .get<ApiResponse<Technician[]>>(
+        `${this.apiBaseUrl}/users/workshops/${workshopId}/technicians`
       )
-      .pipe(map((response) => response.data.users));
+      .pipe(map((response) => response.data));
   }
 
   /**

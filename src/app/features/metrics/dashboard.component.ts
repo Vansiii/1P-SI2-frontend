@@ -658,16 +658,35 @@ export class MetricsDashboardComponent implements OnInit, OnDestroy {
   }
 
   updateChartsFromRealtimeData(): void {
-    // Update incident counts chart from real-time data
     const counts = this.incidentCounts();
     const statusLabels = Object.keys(counts.byStatus);
-    const statusCounts = Object.values(counts.byStatus);
+    const statusCounts = Object.values(counts.byStatus) as number[];
     
-    // Only update if we have data
-    if (statusLabels.length > 0) {
-      // You can create a status distribution chart here if needed
-      console.log('📊 Status distribution:', counts.byStatus);
+    if (statusLabels.length > 0 && statusCounts.some(c => c > 0)) {
+      this.categoryChartData = {
+        labels: statusLabels,
+        datasets: [{
+          label: 'Incidentes por Estado',
+          data: statusCounts,
+          backgroundColor: statusLabels.map(label => this.getStatusColor(label))
+        }]
+      };
     }
+  }
+
+  private getStatusColor(status: string): string {
+    const colorMap: Record<string, string> = {
+      'pendiente': '#FF9800',
+      'asignado': '#2196F3',
+      'en_proceso': '#9C27B0',
+      'en_camino': '#00BCD4',
+      'resuelto': '#4CAF50',
+      'completado': '#4CAF50',
+      'cancelado': '#F44336',
+      'rechazado': '#FF5722',
+      'sin_taller_disponible': '#795548',
+    };
+    return colorMap[status] || '#9E9E9E';
   }
 
   /**

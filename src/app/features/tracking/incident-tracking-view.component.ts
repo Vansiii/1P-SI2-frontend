@@ -251,6 +251,8 @@ interface User {
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
                             } @else if (item.message!.is_read || item.message!.status === 'read') {
                               <svg width="14" height="10" viewBox="0 0 24 16" fill="none" stroke="#34C759" stroke-width="2.5"><path d="M1 8l5 5L18 1M7 8l5 5L24 1"/></svg>
+                            } @else if (item.message!.status === 'delivered') {
+                              <svg width="14" height="10" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.7"><path d="M1 8l5 5L18 1M7 8l5 5L24 1"/></svg>
                             } @else {
                               <svg width="12" height="10" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.7"><path d="M1 6l4 4L15 1"/></svg>
                             }
@@ -273,6 +275,7 @@ interface User {
                 <div class="typing-bubble">
                   <span></span><span></span><span></span>
                 </div>
+                <span class="typing-label">escribiendo</span>
               </div>
             }
           }
@@ -819,7 +822,8 @@ interface User {
     /* Typing indicator */
     .typing-indicator {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
+      gap: 8px;
       margin-bottom: 6px;
     }
 
@@ -843,6 +847,12 @@ interface User {
 
     .typing-bubble span:nth-child(2) { animation-delay: 0.2s; }
     .typing-bubble span:nth-child(3) { animation-delay: 0.4s; }
+
+    .typing-label {
+      font-size: 12px;
+      color: #6b7280;
+      font-weight: 500;
+    }
 
     @keyframes typing {
       0%, 60%, 100% { transform: translateY(0); opacity: 0.6; }
@@ -1427,6 +1437,7 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
   // ── markAsRead debounce ─────────────────────────────────────────────────
   private markAsReadTimer: ReturnType<typeof setTimeout> | null = null;
   private alreadyMarkedRead = false;
+  private redirectingAfterCancellation = false;
 
   // ── Mensajes con separadores de día ────────────────────────────────────
   messagesWithSeparators = computed(() => {
@@ -1444,11 +1455,11 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
       const prev = i > 0 ? msgs[i - 1] : null;
 
       // Separador de día
-      if (!prev || !this.isSameDay(new Date(prev.created_at), new Date(msg.created_at))) {
+      if (!prev || !this.isSameDay(this.parseServerDate(prev.created_at), this.parseServerDate(msg.created_at))) {
         result.push({
           type: 'separator',
           key: `sep-${msg.created_at}`,
-          label: this.formatDayLabel(new Date(msg.created_at))
+          label: this.formatDayLabel(this.parseServerDate(msg.created_at))
         });
       }
 
@@ -1457,7 +1468,7 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
         prev.sender_id === msg.sender_id &&
         prev.message_type !== 'system' &&
         msg.message_type !== 'system' &&
-        (new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime()) < 120000;
+        (this.parseServerDate(msg.created_at).getTime() - this.parseServerDate(prev.created_at).getTime()) < 120000;
 
       result.push({
         type: 'message',
@@ -1491,9 +1502,8 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.incidentId) {
-      this.wsService.disconnect();
-    }
+    // Do not disconnect global WebSocket here: other realtime modules/pages
+    // may be using the shared connection.
     if (this.typingTimeout) clearTimeout(this.typingTimeout);
     if (this.markAsReadTimer) clearTimeout(this.markAsReadTimer);
   }
@@ -1602,8 +1612,15 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
 
   formatMessageTime(timestamp: string): string {
     if (!timestamp) return '';
-    const date = new Date(timestamp);
+    const date = this.parseServerDate(timestamp);
     return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  private parseServerDate(timestamp: string): Date {
+    const raw = String(timestamp ?? '').trim();
+    if (!raw) return new Date();
+    const hasTimezone = /([zZ]|[+\-]\d{2}:\d{2})$/.test(raw);
+    return new Date(hasTimezone ? raw : `${raw}Z`);
   }
 
   private loadIncidentData(): void {
@@ -1697,27 +1714,55 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (messages) => {
           const sorted = [...messages].sort((a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            this.parseServerDate(a.created_at).getTime() - this.parseServerDate(b.created_at).getTime()
           );
-          const prevLen = this.messages().length;
-          this.messages.set(sorted);
+          const previousMessages = this.messages();
+          const prevLen = previousMessages.length;
+
+          const currentUserId = Number(this.currentUser()?.id ?? 0);
+          const localPendingMessages = previousMessages.filter((message) =>
+            message.isTemporary ||
+            message.status === 'sending' ||
+            message.status === 'failed'
+          );
+          const serverIds = new Set(sorted.map((message) => Number(message.id)));
+          const localConfirmedOwnMessages = previousMessages.filter((message) =>
+            !message.isTemporary &&
+            message.status !== 'sending' &&
+            message.status !== 'failed' &&
+            Number(message.sender_id) === currentUserId &&
+            !serverIds.has(Number(message.id))
+          );
+          const localOnlyMessages = [...localPendingMessages, ...localConfirmedOwnMessages].filter(
+            (message, index, array) =>
+              array.findIndex((entry) =>
+                Number(entry.id) === Number(message.id) ||
+                (entry.localId && entry.localId === message.localId)
+              ) === index
+          );
+
+          const merged = [...sorted, ...localOnlyMessages].sort(
+            (a, b) => this.parseServerDate(a.created_at).getTime() - this.parseServerDate(b.created_at).getTime()
+          );
+
+          this.messages.set(merged);
           this.loadingMessages.set(false);
 
           // Guardar en localStorage
           try {
-            localStorage.setItem(cacheKey, JSON.stringify({ messages: sorted, cachedAt: Date.now() }));
+            localStorage.setItem(cacheKey, JSON.stringify({ messages: merged, cachedAt: Date.now() }));
           } catch { /* ignore */ }
 
-          if (sorted.length > prevLen && prevLen > 0) {
+          if (merged.length > prevLen && prevLen > 0) {
             // Nuevos mensajes recibidos
             if (this.isUserAtBottom()) {
               this.scrollToBottom();
             } else {
-              this.newMessagesCount.update(n => n + (sorted.length - prevLen));
+              this.newMessagesCount.update(n => n + (merged.length - prevLen));
             }
             // markAsRead con debounce
             this.scheduleMarkAsRead();
-          } else if (prevLen === 0) {
+          } else if (prevLen === 0 && merged.length > 0) {
             setTimeout(() => this.scrollToBottom(), 50);
           }
         },
@@ -1751,31 +1796,98 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
 
   private connectWebSocket(): void {
     this.wsService.connect(this.incidentId!);
+    this.ensureIncidentRoomJoined(this.incidentId!);
 
     this.wsService.messages$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(message => {
-        if (message.type === 'location_update') {
+        const eventType = String((message as any)?.type ?? (message as any)?.event_type ?? '');
+
+        if (eventType === 'location_update' || eventType === 'tracking.location_updated') {
           this.updateTechnicianLocation(message.data);
-        } else if (message.type === 'incident_status_changed' || message.type === 'incident_status_change') {
+        } else if (eventType === 'incident_status_changed' || eventType === 'incident_status_change') {
           const data = message.data ?? message;
           const incidentId = data?.incident_id;
           const newStatus = data?.estado_actual ?? data?.new_status;
+          const reason = data?.reason;
           if (incidentId === this.incidentId && newStatus) {
             this.incident.update(inc => inc ? { ...inc, estado_actual: newStatus } : inc);
+            if (reason === 'mutual_cancellation') {
+              this.pendingCancellation.set(null);
+              this.addMessage({
+                id: Date.now(),
+                sender_id: 0,
+                message: '✅ Cancelación aprobada. Redirigiendo a la lista...',
+                message_type: 'system',
+                created_at: new Date().toISOString()
+              });
+              this.showSuccessAnimationAndRedirect();
+            }
           }
-        } else if (message.type === 'incident_cancelled') {
+        } else if (eventType === 'incident_cancelled') {
           const data = message.data ?? message;
           if (data?.incident_id === this.incidentId) {
             this.incident.update(inc => inc ? { ...inc, estado_actual: 'cancelado' } : inc);
           }
-        } else if (message.type === 'technician_assigned') {
+        } else if (eventType === 'technician_assigned') {
           const data = message.data ?? message;
           if (data?.incident_id === this.incidentId) {
             this.loadIncidentData();
           }
+        } else if (
+          eventType === 'cancellation.requested' ||
+          eventType === 'cancellation.approved' ||
+          eventType === 'cancellation.rejected' ||
+          eventType === 'cancellation_request' ||
+          eventType === 'cancellation_response'
+        ) {
+          this.handleCancellationRealtimeEvent(message);
         }
       });
+  }
+
+  private handleCancellationRealtimeEvent(message: any): void {
+    const data = message.data ?? message.payload ?? message;
+    const eventType = String((message as any)?.type ?? (message as any)?.event_type ?? '');
+    const incidentId = Number(data?.incident_id);
+    if (!incidentId || incidentId !== this.incidentId) return;
+
+    if (eventType === 'cancellation.requested' || eventType === 'cancellation_request') {
+      this.loadPendingCancellation();
+      return;
+    }
+
+    if (eventType === 'cancellation.rejected') {
+      this.pendingCancellation.set(null);
+      this.addMessage({
+        id: Date.now(),
+        sender_id: 0,
+        message: '❌ Cancelación rechazada. El servicio continúa normalmente.',
+        message_type: 'system',
+        created_at: new Date().toISOString()
+      });
+      return;
+    }
+
+    if (eventType === 'cancellation.approved' || eventType === 'cancellation_response') {
+      this.pendingCancellation.set(null);
+      this.addMessage({
+        id: Date.now(),
+        sender_id: 0,
+        message: '✅ Cancelación aprobada. Redirigiendo a la lista...',
+        message_type: 'system',
+        created_at: new Date().toISOString()
+      });
+      this.showSuccessAnimationAndRedirect();
+    }
+  }
+
+  private ensureIncidentRoomJoined(incidentId: number): void {
+    const tryJoin = () => this.wsService.joinIncidentRoom(incidentId);
+    tryJoin();
+    setTimeout(tryJoin, 300);
+    setTimeout(tryJoin, 1000);
+    setTimeout(tryJoin, 3000);
   }
 
   private addMessage(messageData: any): void {
@@ -1885,10 +1997,18 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
           sender_name: `${this.currentUser()?.first_name} ${this.currentUser()?.last_name}`,
           status: 'sent'
         };
-        // Reemplazar temporal con real
-        this.messages.update(msgs =>
-          msgs.map(m => m.localId === localId ? enriched : m)
-        );
+        // Reemplazar temporal con real; si no existe temporal, hacer upsert del mensaje real
+        this.messages.update(msgs => {
+          const hasTemporary = msgs.some(m => m.localId === localId);
+          if (hasTemporary) {
+            return msgs.map(m => m.localId === localId ? enriched : m);
+          }
+          const alreadyExists = msgs.some(m => Number(m.id) === Number(enriched.id));
+          if (alreadyExists) return msgs;
+          return [...msgs, enriched].sort(
+            (a, b) => this.parseServerDate(a.created_at).getTime() - this.parseServerDate(b.created_at).getTime()
+          );
+        });
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -1918,9 +2038,18 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
       }).toPromise();
 
       if (sent) {
-        this.messages.update(msgs =>
-          msgs.map(m => m.localId === localId ? { ...sent, status: 'sent' as const } : m)
-        );
+        this.messages.update(msgs => {
+          const replacement = { ...sent, status: 'sent' as const };
+          const hasTemporary = msgs.some(m => m.localId === localId);
+          if (hasTemporary) {
+            return msgs.map(m => m.localId === localId ? replacement : m);
+          }
+          const alreadyExists = msgs.some(m => Number(m.id) === Number(sent.id));
+          if (alreadyExists) return msgs;
+          return [...msgs, replacement].sort(
+            (a, b) => this.parseServerDate(a.created_at).getTime() - this.parseServerDate(b.created_at).getTime()
+          );
+        });
       }
     } catch {
       this.messages.update(msgs =>
@@ -1995,7 +2124,11 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (cancellation) => this.pendingCancellation.set(cancellation),
         error: (error) => {
-          if (error.status !== 404) console.error('Error loading pending cancellation:', error);
+          if (error.status === 404) {
+            this.pendingCancellation.set(null);
+            return;
+          }
+          console.error('Error loading pending cancellation:', error);
         }
       });
   }
@@ -2071,6 +2204,9 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
   }
 
   private showSuccessAnimationAndRedirect(): void {
+    if (this.redirectingAfterCancellation) return;
+    this.redirectingAfterCancellation = true;
+
     const overlay = document.createElement('div');
     overlay.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:10000;`;
     const box = document.createElement('div');
@@ -2082,6 +2218,7 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
       document.body.removeChild(overlay);
       const userType = this.currentUser()?.user_type;
       this.router.navigate([userType === 'workshop' ? '/workshop/incidents' : '/dashboard']);
+      this.redirectingAfterCancellation = false;
     }, 2500);
   }
 }

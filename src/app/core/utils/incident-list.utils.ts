@@ -110,9 +110,18 @@ export function safeIncidentMerge<T extends Record<string, any>>(
     console.warn('[IncidentUtils] Attempted to set estado to "asignado" without taller_id');
     merged['estado_actual'] = current['estado_actual'];
   }
+
+  // Keep legacy and canonical status fields synchronized.
+  // Some views still read `estado` while others read `estado_actual`.
+  if (updates['estado_actual'] !== undefined) {
+    merged['estado'] = updates['estado_actual'];
+  } else if (updates['estado'] !== undefined) {
+    merged['estado_actual'] = updates['estado'];
+  }
   
-  // Update timestamp
-  merged['updated_at'] = new Date().toISOString();
+  if (updates['updated_at'] === undefined) {
+    merged['updated_at'] = new Date().toISOString();
+  }
   
   return merged as T;
 }
@@ -287,6 +296,13 @@ export function sortIncidents<T extends Record<string, any>>(
   incidents: T[]
 ): T[] {
   return [...incidents].sort((a, b) => {
+    // Timeouts first
+    const aTimeout = a['has_timeout'] || a['_isTimedOut'] || false;
+    const bTimeout = b['has_timeout'] || b['_isTimedOut'] || false;
+    if (aTimeout !== bTimeout) {
+      return aTimeout ? -1 : 1;
+    }
+    
     // First by priority
     const priorityOrder: Record<string, number> = { alta: 0, media: 1, baja: 2 };
     const aPriority = priorityOrder[a['prioridad'] || a['prioridad_ia']] ?? 3;

@@ -1,8 +1,10 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { AdminService } from '../../../core/services/admin.service';
+import { AdminRealtimeService } from '../../../core/services/admin-realtime.service';
 
 interface AuditLog {
   id: number;
@@ -26,6 +28,8 @@ interface AuditLog {
 })
 export class AuditLogsComponent implements OnInit {
   private readonly adminService = inject(AdminService);
+  private readonly adminRealtimeService = inject(AdminRealtimeService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly logs = signal<AuditLog[]>([]);
   readonly isLoading = signal(false);
@@ -62,11 +66,19 @@ export class AuditLogsComponent implements OnInit {
   readonly actions = ['LOGIN', 'LOGOUT', 'CREATE', 'UPDATE', 'DELETE', 'VIEW'];
   readonly resourceTypes = ['USER', 'WORKSHOP', 'INCIDENT', 'SERVICE', 'AUTH'];
 
+  readonly newLogsAvailable = signal(false);
+
   ngOnInit(): void {
     this.loadLogs();
+    this.adminRealtimeService.auditUpdates$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        this.newLogsAvailable.set(true);
+      });
   }
 
   loadLogs(): void {
+    this.newLogsAvailable.set(false);
     this.isLoading.set(true);
     this.errorMessage.set(null);
 

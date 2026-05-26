@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal, effect, HostListener, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, inject, signal, HostListener, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -52,16 +52,12 @@ export class NotificationsDropdownComponent {
   });
 
   constructor() {
-    // Subscribe to real-time notifications
+    // Subscribe to notification-realtime service events
     this.notificationRealtimeService.notificationReceived$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(notification => {
         console.log('🔔 New notification received in dropdown:', notification);
-        
-        // Show animation
         this.triggerNotificationAnimation();
-        
-        // Reload incidents to get updated data
         this.loadCompleteNotificationData();
       });
 
@@ -231,7 +227,7 @@ export class NotificationsDropdownComponent {
     // Navegar después de un pequeño delay
     setTimeout(() => {
       if (this.isAdmin()) {
-        this.router.navigate(['/admin/unassigned-incidents']);
+        this.router.navigate(['/admin/monitoring']);
       } else {
         this.router.navigate(['/workshop/incidents']);
       }

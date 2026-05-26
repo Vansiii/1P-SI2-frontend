@@ -78,6 +78,10 @@ export class NotificationRealtimeService {
   readonly badgeUpdated$ = this.badgeUpdatedSubject.asObservable();
 
   private unsubscribers: (() => void)[] = [];
+  private readonly processedNotificationKeys = new Set<string>();
+  private readonly processedNotificationTimestamps = new Map<string, number>();
+  private readonly PROCESSED_KEYS_MAX = 1000;
+  private readonly PROCESSED_KEY_TTL_MS = 5 * 60 * 1000;
 
   constructor() {
     this.setupEventHandlers();
@@ -94,7 +98,12 @@ export class NotificationRealtimeService {
   private setupEventHandlers(): void {
     const notificationEventTypes = [
       'notification.received',
-      'notification.badge_updated'
+      'notification_created',
+      'notification.badge_updated',
+      'notification.read',
+      'notification_read',
+      'notification.all_read',
+      'notifications_all_read',
     ];
 
     const unsubscribe = this.eventDispatcher.subscribeMultiple(
@@ -122,6 +131,14 @@ export class NotificationRealtimeService {
         case 'notification.badge_updated':
           this.handleBadgeUpdated(event as RealtimeEvent<any>);
           break;
+        case 'notification.read':
+        case 'notification_read':
+          this.handleNotificationRead(event as RealtimeEvent<any>);
+          break;
+        case 'notification.all_read':
+        case 'notifications_all_read':
+          this.handleNotificationsAllRead();
+          break;
         default:
           console.warn('⚠️ Unknown notification event type:', event.type);
       }
@@ -136,36 +153,48 @@ export class NotificationRealtimeService {
   private handleNotificationReceived(event: RealtimeEvent<any>): void {
     try {
       const data = event.data || (event as any);
-      
-      if (!data.notification_id) {
+
+      const notificationId = data.notification_id;
+      if (!notificationId) {
         console.error('❌ Invalid notification.received event: missing notification_id', event);
         return;
       }
-      
+
+      const dedupKey = this.buildDedupKey(event, data);
+      if (this.isDuplicateNotification(dedupKey)) {
+        console.log('⏭️ Duplicate notification skipped:', dedupKey);
+        return;
+      }
+
       const notification: Notification = {
-        id: data.notification_id,
+        id: notificationId,
         userId: data.user_id,
         type: data.type,
         title: data.title,
         body: data.body,
         data: data.data,
-        read: false,
+        read: data.is_read ?? false,
         createdAt: data.created_at || event.timestamp
       };
 
-      // Add notification to the beginning of the list
-      this.notifications.update(notifications => [notification, ...notifications]);
+      // Upsert by notification id
+      let isNewNotification = false;
+      this.notifications.update(notifications => {
+        const index = notifications.findIndex(n => n.id === notification.id);
+        if (index === -1) {
+          isNewNotification = true;
+          return [notification, ...notifications];
+        }
 
-      // Emit notification
-      this.notificationReceivedSubject.next(notification);
+        const updated = [...notifications];
+        updated[index] = { ...updated[index], ...notification };
+        return updated;
+      });
 
-      // Update badge count
-      this.badgeCount.update(badge => ({
-        ...badge,
-        unreadCount: badge.unreadCount + 1,
-        totalCount: badge.totalCount + 1,
-        updatedAt: event.timestamp
-      }));
+      if (isNewNotification) {
+        this.notificationReceivedSubject.next(notification);
+      }
+      this.recalculateBadgeFromNotifications(event.timestamp);
 
       console.log('🔔 New notification received:', notification);
     } catch (error) {
@@ -179,7 +208,11 @@ export class NotificationRealtimeService {
   private handleBadgeUpdated(event: RealtimeEvent<any>): void {
     try {
       const data = event.data || (event as any);
-      
+
+      if (typeof data.unread_count !== 'number' || typeof data.total_count !== 'number') {
+        return;
+      }
+
       const newBadgeCount: BadgeCount = {
         unreadCount: data.unread_count,
         totalCount: data.total_count,
@@ -193,6 +226,16 @@ export class NotificationRealtimeService {
     } catch (error) {
       console.error('❌ Error handling notification.badge_updated event:', error, event);
     }
+  }
+
+  private handleNotificationRead(event: RealtimeEvent<any>): void {
+    const data = event.data || (event as any);
+    if (!data.notification_id) return;
+    this.markAsRead(data.notification_id);
+  }
+
+  private handleNotificationsAllRead(): void {
+    this.markAllAsRead();
   }
 
   /**
@@ -296,15 +339,62 @@ export class NotificationRealtimeService {
    */
   setInitialNotifications(notifications: Notification[]): void {
     this.notifications.set(notifications);
-    
+    this.recalculateBadgeFromNotifications(new Date().toISOString());
+
+    console.log('📋 Initial notifications loaded:', notifications.length);
+  }
+
+  private recalculateBadgeFromNotifications(updatedAt: string): void {
+    const notifications = this.notifications();
     const unreadCount = notifications.filter(n => !n.read).length;
     this.badgeCount.set({
       unreadCount,
       totalCount: notifications.length,
-      updatedAt: new Date().toISOString()
+      updatedAt
     });
+  }
 
-    console.log('📋 Initial notifications loaded:', notifications.length);
+  private buildDedupKey(event: RealtimeEvent<any>, data: any): string {
+    const createdAt = data.created_at || event.timestamp || '';
+    const normalizedTimestamp = typeof createdAt === 'string' ? createdAt.slice(0, 19) : String(createdAt);
+    return [
+      data.notification_id || '',
+      data.user_id || '',
+      data.type || event.type || '',
+      normalizedTimestamp
+    ].join(':');
+  }
+
+  private isDuplicateNotification(key: string): boolean {
+    const now = Date.now();
+    this.cleanupExpiredDedupKeys(now);
+
+    if (this.processedNotificationKeys.has(key)) {
+      return true;
+    }
+
+    this.processedNotificationKeys.add(key);
+    this.processedNotificationTimestamps.set(key, now);
+
+    if (this.processedNotificationKeys.size > this.PROCESSED_KEYS_MAX) {
+      const oldest = [...this.processedNotificationTimestamps.entries()]
+        .sort((a, b) => a[1] - b[1])[0];
+      if (oldest) {
+        this.processedNotificationKeys.delete(oldest[0]);
+        this.processedNotificationTimestamps.delete(oldest[0]);
+      }
+    }
+
+    return false;
+  }
+
+  private cleanupExpiredDedupKeys(now: number): void {
+    for (const [key, timestamp] of this.processedNotificationTimestamps.entries()) {
+      if (now - timestamp > this.PROCESSED_KEY_TTL_MS) {
+        this.processedNotificationTimestamps.delete(key);
+        this.processedNotificationKeys.delete(key);
+      }
+    }
   }
 
   /**
@@ -313,6 +403,8 @@ export class NotificationRealtimeService {
   private cleanup(): void {
     this.unsubscribers.forEach(unsub => unsub());
     this.unsubscribers = [];
+    this.processedNotificationKeys.clear();
+    this.processedNotificationTimestamps.clear();
     
     this.notificationReceivedSubject.complete();
     this.badgeUpdatedSubject.complete();
