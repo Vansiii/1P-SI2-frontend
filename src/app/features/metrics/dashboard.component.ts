@@ -571,10 +571,10 @@ export class MetricsDashboardComponent implements OnInit, OnDestroy {
     // Load system metrics
     this.metricsService.getSystemMetrics().subscribe({
       next: (response) => {
-        this.systemMetrics = response.data;
+        this.systemMetrics = response;
         this.isLoading = false;
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading system metrics:', error);
         this.isLoading = false;
       }
@@ -583,10 +583,10 @@ export class MetricsDashboardComponent implements OnInit, OnDestroy {
     // Load category metrics
     this.metricsService.getIncidentsByCategory().subscribe({
       next: (response) => {
-        this.categoryMetrics = response.data;
+        this.categoryMetrics = response.categories;
         this.updateCategoryChart();
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading category metrics:', error);
       }
     });
@@ -594,9 +594,9 @@ export class MetricsDashboardComponent implements OnInit, OnDestroy {
     // Load response time series
     this.metricsService.getResponseTimeSeries(parseInt(this.selectedPeriod)).subscribe({
       next: (response) => {
-        this.updateResponseTimeChart(response.data);
+        this.updateResponseTimeChart(response);
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading response time series:', error);
       }
     });
@@ -606,9 +606,9 @@ export class MetricsDashboardComponent implements OnInit, OnDestroy {
     const workshopId = 1;
     this.metricsService.getTechnicianPerformance(workshopId, parseInt(this.selectedPeriod)).subscribe({
       next: (response) => {
-        this.updateTechniciansChart(response.data);
+        this.updateTechniciansChart(response);
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading technician performance:', error);
       }
     });

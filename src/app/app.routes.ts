@@ -83,6 +83,10 @@ export const routes: Routes = [
       {
         path: 'withdrawals',
         loadComponent: () => import('./features/admin/withdrawals-management/withdrawals-management').then(m => m.WithdrawalsManagementComponent)
+      },
+      {
+        path: 'reports',
+        loadComponent: () => import('./features/admin/reports/admin-reports').then(m => m.AdminReportsComponent)
       }
     ]
   },
@@ -110,6 +114,10 @@ export const routes: Routes = [
       {
         path: 'wallet',
         loadComponent: () => import('./features/workshop/wallet/wallet').then(m => m.WorkshopWalletComponent)
+      },
+      {
+        path: 'reports',
+        loadComponent: () => import('./features/workshop/reports/workshop-reports').then(m => m.WorkshopReportsComponent)
       }
     ]
   },

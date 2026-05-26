@@ -43,6 +43,16 @@ export class DashboardPageComponent implements OnInit {
     return 'Usuario';
   });
 
+  readonly isAdmin = computed(() => {
+    const userType = this.user()?.user_type ?? '';
+    return userType === 'admin';
+  });
+
+  readonly isWorkshop = computed(() => {
+    const userType = this.user()?.user_type ?? '';
+    return userType === 'workshop';
+  });
+
   readonly twoFactorStatus = computed(() => {
     const currentUser = this.user();
     return Boolean(currentUser?.two_factor_enabled ?? currentUser?.mfa_enabled);
