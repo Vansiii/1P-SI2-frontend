@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, DestroyRef, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { BaseChartDirective } from 'ng2-charts';
+import { BaseChartDirective, provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { ChartConfiguration, ChartData, ChartType } from 'chart.js';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MetricsService } from '../../core/services/metrics.service';
@@ -12,6 +12,7 @@ import { WebSocketService } from '../../core/services/websocket.service';
   selector: 'app-metrics-dashboard',
   standalone: true,
   imports: [CommonModule, FormsModule, BaseChartDirective],
+  providers: [provideCharts(withDefaultRegisterables())],
   template: `
     <div class="dashboard-container">
       <div class="dashboard-header">
