@@ -12,7 +12,7 @@
           @for (incident of incidents(); track trackByIncidentId($index, incident)) {
             <app-incident-card
               [incident]="incident"
-              (cardClick)="onCardClick($event)"
+              (viewDetail)="incidentSelect.emit($event)"
             />
           }
         </div>
@@ -23,7 +23,7 @@
         @for (incident of incidents(); track trackByIncidentId($index, incident)) {
           <app-incident-card
             [incident]="incident"
-            (cardClick)="onCardClick($event)"
+            (viewDetail)="incidentSelect.emit($event)"
           />
         }
       </div>

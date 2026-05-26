@@ -1,8 +1,10 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { AdminService } from '../../../core/services/admin.service';
+import { AdminRealtimeService } from '../../../core/services/admin-realtime.service';
 
 interface Workshop {
   id: number;
@@ -39,6 +41,8 @@ interface Technician {
 })
 export class WorkshopsManagementComponent implements OnInit {
   private readonly adminService = inject(AdminService);
+  private readonly adminRealtimeService = inject(AdminRealtimeService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly workshops = signal<Workshop[]>([]);
   readonly selectedWorkshop = signal<Workshop | null>(null);
@@ -114,6 +118,50 @@ export class WorkshopsManagementComponent implements OnInit {
   ngOnInit(): void {
     this.loadWorkshops();
     this.loadLeaflet();
+    this.subscribeToRealtimeUpdates();
+  }
+
+  private subscribeToRealtimeUpdates(): void {
+    this.adminRealtimeService.workshopUpdates$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((update) => {
+        const w = this.workshops().find(ws => ws.id === update.workshop_id);
+        if (!w) return;
+
+        switch (update.type) {
+          case 'status_changed':
+            if (update.payload) {
+              Object.assign(w, update.payload);
+              this.workshops.set([...this.workshops()]);
+              if (this.selectedWorkshop()?.id === w.id) {
+                this.selectedWorkshop.set({ ...w });
+              }
+            }
+            break;
+          case 'availability_changed':
+          case 'verified':
+          case 'balance_updated':
+            this.workshops.set([...this.workshops()]);
+            break;
+        }
+      });
+
+    this.adminRealtimeService.technicianUpdates$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((update) => {
+        const workshopId = update.payload?.workshop_id;
+        if (!workshopId) return;
+
+        const w = this.workshops().find(ws => ws.id === workshopId);
+        if (!w) return;
+
+        if (update.type === 'status_changed' && update.payload?.technicians_count !== undefined) {
+          w.technicians_count = update.payload.technicians_count;
+        } else if (update.type === 'availability_changed' && update.payload?.technicians_count !== undefined) {
+          w.technicians_count = update.payload.technicians_count;
+        }
+        this.workshops.set([...this.workshops()]);
+      });
   }
 
   async loadLeaflet() {

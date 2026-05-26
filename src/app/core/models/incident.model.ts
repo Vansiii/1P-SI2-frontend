@@ -533,13 +533,13 @@ export const RejectionValidation = {
  */
 export const ValidStateTransitions: Record<IncidentStatus, IncidentStatus[]> = {
   pendiente: ['asignado', 'sin_taller_disponible', 'cancelado'],
-  asignado: ['aceptado', 'cancelado'],
+  asignado: ['aceptado', 'pendiente', 'cancelado'],
   aceptado: ['en_camino', 'cancelado'],
   en_camino: ['en_proceso', 'cancelado'],
-  en_proceso: ['resuelto', 'cancelado'],
+  en_proceso: ['pendiente', 'resuelto', 'cancelado'],
   resuelto: [],
   cancelado: [],
-  sin_taller_disponible: []
+  sin_taller_disponible: ['asignado', 'pendiente', 'cancelado']
 };
 
 /**

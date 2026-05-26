@@ -191,15 +191,11 @@ export class TechniciansManagementComponent implements OnInit, OnDestroy {
     // Actualizar tiempos relativos cada 10 segundos (más frecuente para mejor sincronización)
     this.timeRefreshInterval = setInterval(() => {
       this.timeTick.set(Date.now());
-    }, 10_000); // 10 segundos en lugar de 60
-    
-    // Actualizar ubicaciones cada 30 segundos como respaldo
-    this.updateInterval = setInterval(() => {
-      const currentUser = this.authService.currentUser();
-      if (currentUser && currentUser.user_type === 'workshop') {
-        this.loadTechnicians(true); // Silent reload
-      }
-    }, 30000);
+    }, 10_000);
+
+    // Technicians are now updated reactively via WebSocket events
+    // (technician.status_changed, technician.availability_changed, technician.location_updated)
+    // No polling needed during normal operation.
 
     // Close dropdown when clicking outside
     document.addEventListener('click', (event) => {
@@ -211,9 +207,6 @@ export class TechniciansManagementComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.updateInterval) {
-      clearInterval(this.updateInterval);
-    }
     if (this.clockInterval) {
       clearInterval(this.clockInterval);
     }

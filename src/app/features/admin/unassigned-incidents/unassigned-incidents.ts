@@ -28,43 +28,109 @@ export class UnassignedIncidentsComponent implements OnInit, OnDestroy {
   readonly incidentCount = computed(() => this.incidents().length);
 
   constructor() {
-    // Subscribe to real-time incident updates
     this.incidentRealtimeService.incidentUpdates$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(update => {
         console.log('🔔 Incident update received in unassigned-incidents:', update);
-        
-        // Handle different update types
+
+        const data = update.data;
+
         switch (update.updateType) {
-          case 'created':
-            // Check if incident is unassigned (sin_taller_disponible)
-            if (update.data?.estado_actual === 'sin_taller_disponible') {
-              this.loadIncidents(); // Reload to get complete data
-            }
-            break;
-          
-          case 'status_changed':
-            // If incident changed to sin_taller_disponible, add it
-            if (update.data?.new_status === 'sin_taller_disponible') {
+          case 'created': {
+            const isUnassigned =
+              data?.estado_actual === 'sin_taller_disponible' ||
+              data?.incident?.estado === 'sin_taller_disponible';
+            if (!isUnassigned) break;
+
+            if (data?.incident) {
+              const inc = data.incident;
+              const legacyIncident: LegacyIncident = {
+                id: inc.id,
+                cliente_id: inc.cliente_id,
+                vehiculo_id: inc.vehiculo_id,
+                taller_id: inc.taller_id ?? null,
+                tecnico_id: inc.tecnico_id ?? null,
+                estado_actual: inc.estado ?? 'sin_taller_disponible',
+                estado_label: inc.estado ?? 'sin_taller_disponible',
+                descripcion: inc.descripcion ?? '',
+                latitud: inc.latitud ?? null,
+                longitud: inc.longitud ?? null,
+                direccion_referencia: inc.direccion_referencia ?? null,
+                categoria_ia: inc.categoria?.nombre ?? null,
+                prioridad_ia: inc.prioridad ?? null,
+                prioridad_label: inc.prioridad ?? '',
+                created_at: inc.created_at,
+                updated_at: inc.updated_at,
+                cliente: inc.cliente as any,
+                vehiculo: inc.vehiculo as any,
+                taller: inc.taller as any,
+                tecnico: inc.tecnico as any,
+                resumen_ia: null,
+                es_ambiguo: false,
+                assigned_at: null,
+                suggested_technician: inc.suggested_technician ?? null,
+              };
+              this.incidents.update(list => {
+                if (list.some(i => i.id === legacyIncident.id)) return list;
+                return [legacyIncident, ...list];
+              });
+            } else {
               this.loadIncidents();
             }
-            // If incident changed from sin_taller_disponible, remove it
-            else if (update.data?.old_status === 'sin_taller_disponible') {
+            break;
+          }
+
+          case 'status_changed':
+            if (data?.new_status === 'sin_taller_disponible') {
+              if (data?.incident) {
+                const inc = data.incident;
+                const legacyIncident: LegacyIncident = {
+                  id: inc.id,
+                  cliente_id: inc.cliente_id,
+                  vehiculo_id: inc.vehiculo_id,
+                  taller_id: inc.taller_id ?? null,
+                  tecnico_id: inc.tecnico_id ?? null,
+                  estado_actual: inc.estado ?? 'sin_taller_disponible',
+                  estado_label: inc.estado ?? 'sin_taller_disponible',
+                  descripcion: inc.descripcion ?? '',
+                  latitud: inc.latitud ?? null,
+                  longitud: inc.longitud ?? null,
+                  direccion_referencia: inc.direccion_referencia ?? null,
+                  categoria_ia: inc.categoria?.nombre ?? null,
+                  prioridad_ia: inc.prioridad ?? null,
+                  prioridad_label: inc.prioridad ?? '',
+                  created_at: inc.created_at,
+                  updated_at: inc.updated_at,
+                  cliente: inc.cliente as any,
+                  vehiculo: inc.vehiculo as any,
+                  taller: inc.taller as any,
+                  tecnico: inc.tecnico as any,
+                  resumen_ia: null,
+                  es_ambiguo: false,
+                  assigned_at: null,
+                  suggested_technician: inc.suggested_technician ?? null,
+                };
+                this.incidents.update(list => {
+                  if (list.some(i => i.id === legacyIncident.id)) return list;
+                  return [legacyIncident, ...list];
+                });
+              } else {
+                this.loadIncidents();
+              }
+            } else if (data?.old_status === 'sin_taller_disponible') {
               this.incidents.update(incidents =>
                 incidents.filter(i => i.id !== update.incidentId)
               );
             }
             break;
-          
+
           case 'assigned':
-            // Remove incident from unassigned list
             this.incidents.update(incidents =>
               incidents.filter(i => i.id !== update.incidentId)
             );
             break;
-          
+
           case 'cancelled':
-            // Remove cancelled incident
             this.incidents.update(incidents =>
               incidents.filter(i => i.id !== update.incidentId)
             );

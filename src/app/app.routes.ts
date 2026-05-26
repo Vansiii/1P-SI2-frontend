@@ -68,8 +68,13 @@ export const routes: Routes = [
         loadComponent: () => import('./features/admin/audit-logs/audit-logs').then(m => m.AuditLogsComponent)
       },
       {
+        path: 'monitoring',
+        loadComponent: () => import('./features/admin/system-monitoring/system-monitoring').then(m => m.SystemMonitoringComponent)
+      },
+      {
         path: 'unassigned-incidents',
-        loadComponent: () => import('./features/admin/unassigned-incidents/unassigned-incidents').then(m => m.UnassignedIncidentsComponent)
+        redirectTo: 'monitoring',
+        pathMatch: 'full'
       },
       {
         path: 'incident/:id',
@@ -89,6 +94,14 @@ export const routes: Routes = [
       { 
         path: 'incidents', 
         loadComponent: () => import('./features/workshop/incidents-list/incidents-list').then(m => m.IncidentsListComponent)
+      },
+      { 
+        path: 'incidents/map', 
+        loadComponent: () => import('./features/workshop/workshop-map-page/workshop-map-page').then(m => m.WorkshopMapPageComponent)
+      },
+      { 
+        path: 'incidents/:id', 
+        loadComponent: () => import('./features/workshop/incident-detail/incident-detail').then(m => m.WorkshopIncidentDetailComponent)
       },
       { 
         path: 'technicians', 

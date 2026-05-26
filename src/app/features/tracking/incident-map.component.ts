@@ -120,7 +120,7 @@ interface Workshop {
       position: relative;
       width: 100%;
       height: 100%;
-      background: #0a0a0a;
+      background: #f5f7fa;
       overflow: hidden;
     }
 
@@ -551,9 +551,6 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.updateClock());
 
-    // Conectar al WebSocket del incidente
-    this.wsService.connect(this.incident.id);
-
     // Escuchar actualizaciones de ubicación
     this.wsService.messages$
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -599,7 +596,6 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
   }
 
   ngOnDestroy(): void {
-    this.wsService.disconnect();
     this.map?.remove();
   }
 

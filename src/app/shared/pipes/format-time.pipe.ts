@@ -1,37 +1,34 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
 /**
- * Pure pipe for formatting time
+ * Impure pipe for relative time display that updates in real time.
  * Usage: {{ date | formatTime }}
  */
 @Pipe({
   name: 'formatTime',
   standalone: true,
-  pure: true // Pure pipe for better performance
+  pure: false
 })
 export class FormatTimePipe implements PipeTransform {
   transform(dateString: string | null | undefined): string {
     if (!dateString) return '';
-    
+
     const date = new Date(dateString);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const diffMins = Math.floor(diff / 60000);
+    const diffHours = Math.floor(diff / 3600000);
+    const diffDays = Math.floor(diff / 86400000);
 
-    if (days === 0) {
-      return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    } else if (days === 1) {
-      return `Ayer ${date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
-    } else if (days < 7) {
-      return date.toLocaleDateString('es-ES', { weekday: 'long', hour: '2-digit', minute: '2-digit' });
-    } else {
-      return date.toLocaleDateString('es-ES', { 
-        day: '2-digit', 
-        month: '2-digit', 
-        year: 'numeric', 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      });
-    }
+    if (diffMins < 1) return 'Ahora';
+    if (diffMins < 60) return `Hace ${diffMins}m`;
+    if (diffHours < 24) return `Hace ${diffHours}h`;
+    if (diffDays < 7) return `Hace ${diffDays}d`;
+
+    return date.toLocaleDateString('es-ES', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
   }
 }

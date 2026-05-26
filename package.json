@@ -11,7 +11,8 @@
     "lint": "ng lint",
     "lint:fix": "ng lint --fix",
     "precommit": "npm run lint",
-    "postinstall": "node scripts/install-hooks.js"
+    "postinstall": "node scripts/install-hooks.js && node scripts/build-env.js",
+    "setup-env": "node scripts/build-env.js"
   },
   "private": true,
   "packageManager": "npm@10.9.3",
@@ -26,6 +27,7 @@
     "@angular/router": "^21.2.0",
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/outfit": "^5.2.8",
+    "@swimlane/ngx-charts": "^23.1.0",
     "chart.js": "^4.5.1",
     "firebase": "^12.12.0",
     "leaflet": "^1.9.4",
@@ -53,6 +55,15 @@
     "vitest": "^4.0.8"
   },
   "overrides": {
-    "vite": "^8.0.8"
+    "vite": "^8.0.8",
+    "@swimlane/ngx-charts": {
+      "@angular/animations": "$@angular/animations",
+      "@angular/common": "$@angular/common",
+      "@angular/core": "$@angular/core",
+      "@angular/platform-browser": "$@angular/platform-browser",
+      "@angular/platform-browser-dynamic": "$@angular/platform-browser-dynamic",
+      "@angular/cdk": "$@angular/cdk",
+      "@angular/forms": "$@angular/forms"
+    }
   }
 }

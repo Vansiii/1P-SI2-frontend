@@ -15,7 +15,8 @@ import {
   Client,
   Vehicle,
   Workshop,
-  Technician
+  Technician,
+  isValidTransition
 } from '../models/incident.model';
 import { safeIncidentMerge } from '../utils/incident-list.utils';
 
@@ -178,8 +179,18 @@ export class IncidentsService {
   /** Emits whenever a new incident_assigned event arrives — components can subscribe to refresh counters */
   public readonly incidentAssigned$ = new Subject<any>();
 
+  public readonly incidentTimeout$ = new Subject<any>();
+
+  /** Atomic lock to prevent concurrent fetches for the same incident */
+  private fetchingIncidents = new Set<number>();
+
   constructor() {
     this.subscribeToWebSocket();
+  }
+
+  private toInt(value: any): number | null {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
   }
 
   /**
@@ -195,6 +206,7 @@ export class IncidentsService {
           this.handleIncidentStatusChange(message.data ?? message);
           break;
         case 'incident_updated':
+        case 'incident.updated':
           this.handleIncidentUpdated(message.data ?? message);
           break;
         case 'incident_created':
@@ -224,6 +236,9 @@ export class IncidentsService {
         case 'incident_cancelled':
         case 'incident.cancelled':
           this.handleIncidentCancelled(message.data ?? message);
+          break;
+        case 'cancellation.approved':
+          this.handleMutualCancellationApproved(message.data ?? message);
           break;
         case 'incident_technician_on_way':
         case 'incident.technician_on_way':
@@ -263,6 +278,7 @@ export class IncidentsService {
           this.handleServiceCompleted(message.data ?? message);
           break;
         case 'incident_reassigned':
+        case 'incident.reassigned':
           this.handleIncidentReassigned(message.data ?? message);
           break;
       }
@@ -275,11 +291,12 @@ export class IncidentsService {
    */
   private handleIncidentStatusChange(data: any): void {
     // ✅ Manejar ambos formatos de payload (legacy y nuevo)
-    const incidentId = data?.incident_id ?? data?.data?.incident_id;
-    const newStatus = data?.estado_actual ?? data?.new_status ?? data?.data?.estado_actual;
-    const changedBy = data?.changed_by ?? data?.data?.changed_by;
+    const incidentId = this.toInt(data?.incident_id ?? data?.data?.incident_id);
+    const rawNewStatus = data?.estado_actual ?? data?.new_status ?? data?.data?.estado_actual;
+    const newStatus = this.mapStatus(String(rawNewStatus || '').toLowerCase());
+    const reason = String(data?.reason ?? data?.data?.reason ?? '').toLowerCase();
 
-    if (!incidentId || !newStatus) {
+    if (!incidentId || !rawNewStatus) {
       console.warn('❌ incident_status_change: payload incompleto', data);
       return;
     }
@@ -289,22 +306,52 @@ export class IncidentsService {
     const incidents = this.incidentsSubject.value;
     const index = incidents.findIndex(i => i.id === incidentId);
 
-    // ✅ Si el incidente pasa a "sin_taller_disponible", removerlo de la lista
-    // Solo el admin debe ver estos incidentes
+    // ✅ Si el incidente pasa a "sin_taller_disponible", actualizar su estado
+    // Los talleres deben verlo como "sin_taller_disponible" y el filtro del componente lo oculta
     if (newStatus === 'sin_taller_disponible') {
       if (index !== -1) {
-        console.log(`🚫 Incidente ${incidentId} pasó a sin_taller_disponible - removiendo de cache de taller`);
-        // ✅ CORREGIDO: Usar filter() en vez de splice() para inmutabilidad
-        const filtered = incidents.filter(i => i.id !== incidentId);
-        this.incidentsSubject.next(filtered);
+        const currentUser = this.authService.currentUser();
+        if (currentUser?.user_type === 'workshop') {
+          const filtered = incidents.filter(i => i.id !== incidentId);
+          this.incidentsSubject.next(filtered);
+          console.log(`🚫 Incident ${incidentId} removed from workshop list (sin_taller_disponible)`);
+        } else {
+          console.log(`🚫 Incidente ${incidentId} pasó a sin_taller_disponible - actualizando estado`);
+          const updated = [...incidents];
+          updated[index] = safeIncidentMerge(updated[index], {
+            estado_actual: newStatus,
+            updated_at: data.timestamp || new Date().toISOString()
+          });
+          this.incidentsSubject.next(updated);
+        }
       }
       return;
     }
 
+    // Cancelación mutua: el incidente deja de pertenecer al taller actual inmediatamente.
+    if (newStatus === 'pendiente' && reason === 'mutual_cancellation') {
+      const currentUser = this.authService.currentUser();
+      if (currentUser?.user_type === 'workshop') {
+        const filtered = incidents.filter(i => i.id !== incidentId);
+        if (filtered.length !== incidents.length) {
+          this.incidentsSubject.next(filtered);
+          console.log(`🚫 Incident ${incidentId} removed from workshop list (mutual_cancellation)`);
+        }
+        return;
+      }
+    }
+
     if (index !== -1) {
-      // ✅ CORREGIDO: Crear copia del array antes de modificar
+      const currentStatus = this.mapStatus(String(incidents[index].estado_actual || '').toLowerCase()) as any;
+
+      if (!isValidTransition(currentStatus, newStatus)) {
+        console.warn(
+          `⚠️ Transición inválida ignorada: ${currentStatus} → ${newStatus} para incidente ${incidentId}`
+        );
+        return;
+      }
+
       const updated = [...incidents];
-      // ✅ CORREGIDO: Usar safeIncidentMerge para preservar campos críticos
       updated[index] = safeIncidentMerge(updated[index], {
         estado_actual: newStatus,
         updated_at: data.timestamp || new Date().toISOString()
@@ -323,7 +370,7 @@ export class IncidentsService {
    * ✅ CORREGIDO: Usa inmutabilidad completa
    */
   private handleIncidentUpdated(data: any): void {
-    const incidentId = data?.incident_id;
+    const incidentId = this.toInt(data?.incident_id);
     const updatedFields = data?.updated_fields;
 
     if (!incidentId || !updatedFields) {
@@ -337,11 +384,48 @@ export class IncidentsService {
     const index = incidents.findIndex(i => i.id === incidentId);
 
     if (index !== -1) {
-      // ✅ CORREGIDO: Crear copia del array antes de modificar
+      const currentStatus = this.mapStatus(String(incidents[index].estado_actual || '').toLowerCase()) as any;
+      const rawNewStatus = updatedFields.estado_actual || updatedFields.estado;
+      const newStatus = rawNewStatus
+        ? this.mapStatus(String(rawNewStatus).toLowerCase())
+        : undefined;
+      const updatedWorkshopId = this.toInt(updatedFields?.taller_id);
+
+      const currentUser = this.authService.currentUser();
+      if (
+        currentUser?.user_type === 'workshop' &&
+        Object.prototype.hasOwnProperty.call(updatedFields, 'taller_id')
+      ) {
+        const userWorkshopId = this.toInt(currentUser.workshop_id ?? currentUser.id);
+        if (!userWorkshopId || updatedWorkshopId !== userWorkshopId) {
+          const filtered = incidents.filter(i => i.id !== incidentId);
+          this.incidentsSubject.next(filtered);
+          console.log(`🚫 Incident ${incidentId} removed from workshop list (updated_fields.taller_id mismatch)`);
+          return;
+        }
+      }
+
+      if (newStatus === 'sin_taller_disponible') {
+        const currentUser = this.authService.currentUser();
+        if (currentUser?.user_type === 'workshop') {
+          const filtered = incidents.filter(i => i.id !== incidentId);
+          this.incidentsSubject.next(filtered);
+          console.log(`🚫 Incident ${incidentId} removed from workshop list (incident.updated → sin_taller_disponible)`);
+          return;
+        }
+      }
+
+      if (newStatus && !isValidTransition(currentStatus, newStatus)) {
+        console.warn(
+          `⚠️ Transición inválida ignorada en incident_updated: ${currentStatus} → ${newStatus} para incidente ${incidentId}`
+        );
+        return;
+      }
+
       const updated = [...incidents];
-      // ✅ CORREGIDO: Usar safeIncidentMerge para preservar campos críticos
       updated[index] = safeIncidentMerge(updated[index], {
         ...updatedFields,
+        ...(newStatus ? { estado: newStatus as any, estado_actual: newStatus } : {}),
         updated_at: data.timestamp || new Date().toISOString()
       });
       this.incidentsSubject.next(updated);
@@ -374,7 +458,7 @@ export class IncidentsService {
     const technicianId = data?.technician_id || data?.technician?.id;
     const technicianName = data?.technician_name || data?.technician?.name;
     const workshopId = data?.workshop_id;
-    const estadoActual = data?.estado_actual || 'en_proceso';
+    const estadoActual = data?.estado_actual || 'asignado';
 
     if (!incidentId || !technicianId) {
       console.warn('❌ technician_assigned: payload incompleto', data);
@@ -415,7 +499,7 @@ export class IncidentsService {
       // ✅ CORREGIDO: Crear copia del array antes de modificar
       const updated = [...incidents];
       updated[index] = safeIncidentMerge(updated[index], {
-        estado_actual: 'en_sitio',
+        estado_actual: 'en_proceso',
         updated_at: data.timestamp || new Date().toISOString()
       });
       this.incidentsSubject.next(updated);
@@ -428,33 +512,46 @@ export class IncidentsService {
    * ✅ ACTUALIZACIÓN COMPLETA: Hace fetch del incidente completo desde el servidor
    */
   private handleIncidentCreated(data: any): void {
-    const incidents = this.incidentsSubject.value;
-    const exists = incidents.some(i => i.id === data.incident_id);
+    const currentUser = this.authService.currentUser();
 
-    if (!exists) {
-      console.log(`📨 New incident ${data.incident_id} created, fetching complete data`);
-      
-      // Hacer fetch del incidente completo desde el servidor
-      this.getIncidentDetail(data.incident_id).subscribe({
-        next: (completeIncident) => {
-          const currentIncidents = this.incidentsSubject.value;
-          // Verificar que no se haya agregado mientras tanto
-          if (!currentIncidents.some(i => i.id === data.incident_id)) {
-            currentIncidents.unshift(completeIncident);
-            this.incidentsSubject.next([...currentIncidents]);
-            console.log(`✅ Complete incident ${data.incident_id} added to cache`);
-          }
-        },
-        error: (error) => {
-          console.error(`❌ Error fetching complete incident ${data.incident_id}:`, error);
-          // Fallback: crear con datos básicos si falla el fetch
+    if (currentUser?.user_type === 'workshop') {
+      console.log('⏭️ Skipping incident_created: workshops receive incidents via incident_assigned');
+      return;
+    }
+
+    const incidentId = data.incident_id;
+    const incidents = this.incidentsSubject.value;
+    const exists = incidents.some(i => i.id === incidentId);
+
+    if (exists || this.fetchingIncidents.has(incidentId)) {
+      console.log(`ℹ️ Incident ${incidentId} already exists or fetch in progress`);
+      return;
+    }
+
+    this.fetchingIncidents.add(incidentId);
+    console.log(`📨 New incident ${incidentId} created, fetching complete data`);
+    
+    this.getIncidentDetail(incidentId).subscribe({
+      next: (completeIncident) => {
+        this.fetchingIncidents.delete(incidentId);
+        const currentIncidents = this.incidentsSubject.value;
+        if (!currentIncidents.some(i => i.id === incidentId)) {
+          this.incidentsSubject.next([completeIncident, ...currentIncidents]);
+          console.log(`✅ Complete incident ${incidentId} added to cache`);
+        }
+      },
+      error: (error) => {
+        this.fetchingIncidents.delete(incidentId);
+        console.error(`❌ Error fetching complete incident ${incidentId}:`, error);
+        const currentIncidents = this.incidentsSubject.value;
+        if (!currentIncidents.some(i => i.id === incidentId)) {
           const basicIncident: LegacyIncident = {
-            id: data.incident_id,
+            id: incidentId,
             cliente_id: data.client_id || 0,
             vehiculo_id: data.vehiculo_id || 0,
             taller_id: null,
             tecnico_id: null,
-            estado_actual: data.estado_actual || 'pendiente',
+            estado_actual: 'pendiente',
             estado_label: 'Pendiente',
             descripcion: data.descripcion || 'Sin descripción',
             latitud: data.latitude || 0,
@@ -466,46 +563,61 @@ export class IncidentsService {
             created_at: data.created_at || new Date().toISOString(),
             updated_at: data.timestamp || new Date().toISOString()
           };
-          
-          const currentIncidents = this.incidentsSubject.value;
-          if (!currentIncidents.some(i => i.id === data.incident_id)) {
-            currentIncidents.unshift(basicIncident);
-            this.incidentsSubject.next([...currentIncidents]);
-            console.log(`⚠️ Basic incident ${data.incident_id} added to cache (fetch failed)`);
-          }
+          this.incidentsSubject.next([basicIncident, ...currentIncidents]);
+          console.log(`⚠️ Basic incident ${incidentId} added to cache (fetch failed)`);
         }
-      });
-    } else {
-      console.log(`ℹ️ Incident ${data.incident_id} already exists in cache`);
-    }
+      }
+    });
   }
 
   /**
    * Manejar incidente asignado a taller (notificación en tiempo real)
    * ✅ ACTUALIZACIÓN PARCIAL: Solo actualiza el incidente afectado sin refetch HTTP
-   * ✅ CORREGIDO: Usa inmutabilidad completa
+   * ✅ CORREGIDO: Usa inmutabilidad completa y aplica el estado del evento
+   * 
+   * IMPORTANTE: El incidente sigue en "pendiente" hasta que el taller acepte.
+   * El evento incident.assigned NO cambia el estado — solo notifica al taller.
    */
+  private resolveAssignmentTimeoutAt(data: any): string {
+    const explicitTimeout =
+      data?.timeout_at ||
+      data?.suggested_technician?.timeout_at ||
+      data?.suggested_technician_info?.timeout_at;
+
+    if (explicitTimeout) {
+      return explicitTimeout;
+    }
+
+    const estimatedMinutesRaw =
+      data?.estimated_time ??
+      data?.estimated_time_minutes ??
+      data?.response_timeout_minutes;
+    const estimatedMinutes = Number(estimatedMinutesRaw);
+
+    if (Number.isFinite(estimatedMinutes) && estimatedMinutes > 0) {
+      return new Date(Date.now() + estimatedMinutes * 60 * 1000).toISOString();
+    }
+
+    return new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  }
+
   private handleIncidentAssigned(data: any): void {
     console.log('🔔 Incident assigned event received:', data);
 
-    // ✅ VALIDAR: Solo procesar si el usuario es un taller
     const currentUser = this.authService.currentUser();
-    
-    // Debug: ver qué tiene el usuario
-    console.log('👤 Current user:', currentUser);
-    console.log('🏢 Workshop ID from user:', currentUser?.workshop_id);
-    console.log('🆔 User ID:', currentUser?.id);
     
     if (!currentUser || currentUser.user_type !== 'workshop') {
       console.log('⏭️ Skipping incident_assigned: user is not a workshop');
       return;
     }
 
-    // ✅ VALIDAR: Solo procesar si el workshop_id coincide con el taller actual
-    // Para usuarios tipo workshop, su ID es el workshop_id
-    const userWorkshopId = currentUser.workshop_id || currentUser.id;
-    
-    if (data.workshop_id !== userWorkshopId) {
+    const userWorkshopId = this.toInt(currentUser.workshop_id ?? currentUser.id);
+    const targetWorkshopId = this.toInt(data.workshop_id);
+    if (!userWorkshopId || !targetWorkshopId) {
+      return;
+    }
+
+    if (targetWorkshopId !== userWorkshopId) {
       console.log(
         `⏭️ Skipping incident_assigned: workshop_id ${data.workshop_id} ` +
         `does not match current workshop ${userWorkshopId}`
@@ -515,125 +627,101 @@ export class IncidentsService {
 
     console.log(`✅ Processing incident_assigned for workshop ${userWorkshopId}`);
 
-    // ✅ Actualización parcial: agregar o actualizar el incidente en el estado local
     const incidents = this.incidentsSubject.value;
-    const index = incidents.findIndex(i => i.id === data.incident_id);
+    const timeoutAt = this.resolveAssignmentTimeoutAt(data);
+    const incidentId = this.toInt(data.incident_id);
+    if (!incidentId) return;
+    const index = incidents.findIndex(i => i.id === incidentId);
 
     if (index !== -1) {
-      // ✅ CORREGIDO: Crear copia del array antes de modificar
       const updated = [...incidents];
+      const techData = data.technician_id ? {
+        suggested_technician: {
+          technician_id: data.technician_id,
+          technician_name: data.technician_name || '',
+          distance_km: data.distance_km || 0,
+          compatibility_score: data.compatibility_score || 0,
+          timeout_at: timeoutAt,
+        }
+      } : {};
       updated[index] = safeIncidentMerge(updated[index], {
         taller_id: data.workshop_id,
-        estado_actual: data.estado_actual || data.new_status || updated[index].estado_actual,
-        updated_at: data.timestamp || new Date().toISOString()
+        ...(timeoutAt ? { timeout_at: timeoutAt } : {}),
+        updated_at: data.timestamp || new Date().toISOString(),
+        ...techData
       });
       this.incidentsSubject.next(updated);
-      console.log(`✅ Incident ${data.incident_id} updated in cache (assigned to workshop ${data.workshop_id})`);
+      console.log(`✅ Incident ${incidentId} updated in cache (pending for workshop ${data.workshop_id})`);
     } else {
-      // Si no está en cache, hacer fetch del incidente completo
       console.log(`ℹ️ Incidente ${data.incident_id} no encontrado en cache, haciendo fetch completo`);
-      this.getIncidentById(data.incident_id).then(incident => {
-        const currentIncidents = this.incidentsSubject.value;
-        
-        // Convertir Incident a LegacyIncident
-        const legacyIncident: LegacyIncident = {
-          id: incident.id,
-          cliente_id: incident.cliente_id,
-          vehiculo_id: incident.vehiculo_id,
-          taller_id: incident.taller_id,
-          tecnico_id: incident.tecnico_id,
-          estado_actual: incident.estado,
-          estado_label: incident.estado,
-          descripcion: incident.descripcion,
-          latitud: incident.latitud,
-          longitud: incident.longitud,
-          direccion_referencia: incident.direccion_referencia,
-          categoria_ia: incident.ai_analysis?.suggested_category || null,
-          prioridad_ia: incident.ai_analysis?.suggested_priority || null,
-          prioridad_label: incident.ai_analysis?.suggested_priority || 'media',
-          created_at: incident.created_at,
-          updated_at: incident.updated_at,
-          resumen_ia: incident.ai_analysis?.analysis || null,
-          es_ambiguo: false,
-          assigned_at: null,
-          cliente: incident.cliente,
-          vehiculo: incident.vehiculo,
-          taller: incident.taller || null,
-          tecnico: incident.tecnico || null,
-          // ✅ Incluir suggested_technician del backend
-          suggested_technician: incident.suggested_technician ? {
-            technician_id: incident.suggested_technician.technician_id,
-            technician_name: incident.suggested_technician.technician_name,
-            distance_km: incident.suggested_technician.distance_km,
-            compatibility_score: incident.suggested_technician.compatibility_score
-          } : null
-        };
-        
-        // Asegurar que tenga los datos de asignación actualizados
-        legacyIncident.taller_id = data.workshop_id;
-        legacyIncident.estado_actual = data.estado_actual || data.new_status || legacyIncident.estado_actual;
-        legacyIncident.updated_at = data.timestamp || new Date().toISOString();
-        
-        // ✅ CORREGIDO: Crear nuevo array en vez de mutar
-        const updatedList = [legacyIncident, ...currentIncidents];
-        this.incidentsSubject.next(updatedList);
-        console.log(`✅ Incidente ${data.incident_id} agregado al cache después de fetch completo con suggested_technician`);
-      }).catch(error => {
-        console.error(`❌ Error fetching incident ${data.incident_id}:`, error);
-        // Fallback: crear incidente básico si falla el fetch
-        const newIncident: LegacyIncident = {
-          id: data.incident_id,
-          cliente_id: data.client_id || 0,
-          vehiculo_id: data.vehiculo_id || 0,
-          taller_id: data.workshop_id,
-          tecnico_id: null,
-          estado_actual: data.estado_actual || data.new_status || 'pendiente',
-          estado_label: 'Asignado',
-          descripcion: data.descripcion || 'Descripción no disponible',
-          latitud: data.latitude || 0,
-          longitud: data.longitude || 0,
-          direccion_referencia: data.direccion_referencia || null,
-          categoria_ia: data.categoria_ia || null,
-          prioridad_ia: data.prioridad_ia || null,
-          prioridad_label: data.prioridad_ia || 'Media',
-          created_at: data.created_at || new Date().toISOString(),
-          updated_at: data.timestamp || new Date().toISOString(),
-          suggested_technician: null
-        };
-        const currentIncidents = this.incidentsSubject.value;
-        // ✅ CORREGIDO: Crear nuevo array en vez de mutar
-        const updatedList = [newIncident, ...currentIncidents];
-        this.incidentsSubject.next(updatedList);
-        console.log(`⚠️ Incidente ${data.incident_id} agregado con datos básicos (fetch falló)`);
+      this.getIncidentDetail(incidentId).subscribe({
+        next: (legacyIncident) => {
+          const currentIncidents = this.incidentsSubject.value;
+          legacyIncident.taller_id = data.workshop_id;
+          legacyIncident.updated_at = data.timestamp || new Date().toISOString();
+          (legacyIncident as any).timeout_at = timeoutAt;
+          if (data.technician_id && !legacyIncident.suggested_technician) {
+            legacyIncident.suggested_technician = {
+              technician_id: data.technician_id,
+              technician_name: data.technician_name || '',
+              distance_km: data.distance_km || 0,
+              compatibility_score: data.compatibility_score || 0,
+              timeout_at: timeoutAt,
+            } as any;
+          } else if (legacyIncident.suggested_technician) {
+            (legacyIncident.suggested_technician as any).timeout_at =
+              (legacyIncident.suggested_technician as any).timeout_at || timeoutAt;
+          }
+          const updatedList = [legacyIncident, ...currentIncidents];
+          this.incidentsSubject.next(updatedList);
+          console.log(`✅ Incidente ${incidentId} agregado al cache con fetch exitoso`);
+        },
+        error: (err) => {
+          console.error(`❌ Error fetching incident ${incidentId}:`, err);
+          const newIncident: LegacyIncident = {
+            id: incidentId,
+            cliente_id: data.client_id || 0,
+            vehiculo_id: data.vehiculo_id || 0,
+            taller_id: data.workshop_id,
+            tecnico_id: data.technician_id || null,
+            estado_actual: 'pendiente',
+            estado_label: 'Pendiente',
+            descripcion: data.descripcion || 'Descripción no disponible',
+            latitud: data.latitude || 0,
+            longitud: data.longitude || 0,
+            direccion_referencia: data.direccion_referencia || null,
+            categoria_ia: data.categoria_ia || null,
+            prioridad_ia: data.prioridad_ia || null,
+            prioridad_label: data.prioridad_ia || 'Media',
+            created_at: data.created_at || new Date().toISOString(),
+            updated_at: data.timestamp || new Date().toISOString(),
+            suggested_technician: data.technician_id ? {
+              technician_id: data.technician_id,
+              technician_name: data.technician_name || '',
+              distance_km: 0,
+              compatibility_score: 0,
+              timeout_at: timeoutAt,
+            } as any : null
+          };
+          (newIncident as any).timeout_at = timeoutAt;
+          const fallbackList = [newIncident, ...this.incidentsSubject.value];
+          this.incidentsSubject.next(fallbackList);
+          console.log(`⚠️ Incidente ${incidentId} agregado con datos básicos (fetch falló)`);
+        }
       });
     }
 
-    // Notificar a los componentes suscritos para que recarguen contadores
     this.incidentAssigned$.next(data);
-
-    // Mostrar notificación visual al usuario
-    if ('Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification('Nueva solicitud de servicio', {
-          body: `Incidente #${data.incident_id} - ${data.categoria_ia || 'Sin categoría'}`,
-          icon: '/logo.png',
-          tag: `incident-${data.incident_id}`
-        });
-      } catch (error) {
-        console.warn('Failed to show notification:', error);
-      }
-    }
   }
 
   /**
    * Manejar aceptación de asignación por un taller
    * ✅ CORREGIDO: Si otro taller aceptó, remover el incidente de la vista del taller actual
-   * Si este taller aceptó, actualizar el estado
+   * Si este taller aceptó, actualizar el estado usando new_status del evento
    */
   private handleAssignmentAccepted(data: any): void {
     console.log('✅ Assignment accepted event received:', data);
 
-    // ✅ VALIDAR: Solo procesar si el usuario es un taller
     const currentUser = this.authService.currentUser();
     
     if (!currentUser || currentUser.user_type !== 'workshop') {
@@ -641,32 +729,37 @@ export class IncidentsService {
       return;
     }
 
-    const userWorkshopId = currentUser.workshop_id || currentUser.id;
+    const userWorkshopId = this.toInt(currentUser.workshop_id ?? currentUser.id);
+    const acceptedWorkshopId = this.toInt(data.workshop_id);
+    const incidentId = this.toInt(data.incident_id);
+    if (!userWorkshopId || !incidentId) {
+      return;
+    }
     const incidents = this.incidentsSubject.value;
-    const index = incidents.findIndex(i => i.id === data.incident_id);
+    const index = incidents.findIndex(i => i.id === incidentId);
 
-    // ✅ Si OTRO taller aceptó el incidente, removerlo de la vista de este taller
-    if (data.workshop_id !== userWorkshopId) {
+    if (!acceptedWorkshopId || acceptedWorkshopId !== userWorkshopId) {
       if (index !== -1) {
-        const filtered = incidents.filter(i => i.id !== data.incident_id);
+        const filtered = incidents.filter(i => i.id !== incidentId);
         this.incidentsSubject.next(filtered);
         console.log(
-          `🚫 Incidente ${data.incident_id} removido de la vista del taller ${userWorkshopId} ` +
+          `🚫 Incidente ${incidentId} removido de la vista del taller ${userWorkshopId} ` +
           `(aceptado por taller ${data.workshop_id})`
         );
       }
     } else {
-      // ✅ Si ESTE taller aceptó, actualizar el estado
       if (index !== -1) {
+        const newStatus = data.new_status || data.estado_actual || 'asignado';
         const updated = [...incidents];
         updated[index] = safeIncidentMerge(updated[index], {
-          taller_id: data.workshop_id,
-          estado_actual: updated[index].estado_actual === 'pendiente' ? 'asignado' : updated[index].estado_actual,
+          taller_id: acceptedWorkshopId,
+          tecnico_id: data.technician_id || updated[index].tecnico_id,
+          estado_actual: newStatus,
           updated_at: data.timestamp || new Date().toISOString()
         });
         this.incidentsSubject.next(updated);
         console.log(
-          `✅ Incident ${data.incident_id} accepted by THIS workshop ${data.workshop_name} (id: ${data.workshop_id})`
+          `✅ Incident ${incidentId} accepted by THIS workshop ${data.workshop_name} (id: ${data.workshop_id}), new status: ${newStatus}`
         );
       }
     }
@@ -680,13 +773,6 @@ export class IncidentsService {
   private handleAssignmentRejected(data: any): void {
     console.log('❌ Assignment rejected event received:', data);
 
-    // Log for admin dashboard visibility
-    console.warn(
-      `⚠️ Workshop ${data.workshop_name} (id: ${data.workshop_id}) rejected incident ${data.incident_id}. ` +
-      `Reason: ${data.rejection_reason || 'No reason provided'}`
-    );
-
-    // ✅ VALIDAR: Solo procesar si el usuario es el taller que rechazó
     const currentUser = this.authService.currentUser();
     
     if (!currentUser || currentUser.user_type !== 'workshop') {
@@ -694,21 +780,22 @@ export class IncidentsService {
       return;
     }
 
-    const userWorkshopId = currentUser.workshop_id || currentUser.id;
-    
-    // ✅ Si este taller rechazó el incidente, removerlo de su vista
-    if (data.workshop_id === userWorkshopId) {
+    const userWorkshopId = this.toInt(currentUser.workshop_id ?? currentUser.id);
+    const workshopId = this.toInt(data.workshop_id);
+    const incidentId = this.toInt(data.incident_id);
+    if (!userWorkshopId || !incidentId) return;
+
+    if (workshopId === userWorkshopId) {
       const incidents = this.incidentsSubject.value;
-      const filtered = incidents.filter(i => i.id !== data.incident_id);
+      const filtered = incidents.filter(i => i.id !== incidentId);
       
       if (filtered.length !== incidents.length) {
         this.incidentsSubject.next(filtered);
-        console.log(`🚫 Incidente ${data.incident_id} removido de la vista del taller ${userWorkshopId} (rechazado)`);
+        console.log(`🚫 Incidente ${incidentId} removido de la vista del taller ${userWorkshopId} (rechazado)`);
       }
     } else {
-      // Si es otro taller, solo actualizar timestamp
       const incidents = this.incidentsSubject.value;
-      const index = incidents.findIndex(i => i.id === data.incident_id);
+      const index = incidents.findIndex(i => i.id === incidentId);
 
       if (index !== -1) {
         const updated = [...incidents];
@@ -728,6 +815,8 @@ export class IncidentsService {
   private async handleAssignmentTimeout(data: any): Promise<void> {
     console.log('⏰ Assignment timeout event received:', data);
 
+    this.incidentTimeout$.next(data);
+
     // Log for admin dashboard visibility
     console.warn(
       `⏰ Assignment attempt timed out for incident ${data.incident_id} ` +
@@ -738,7 +827,23 @@ export class IncidentsService {
       // Fetch the updated incident to get its current state
       // Don't just remove it - it might have been reassigned or changed state
       const updatedIncident = await this.getIncidentById(data.incident_id);
-      
+      const normalizedStatus = this.mapStatus(
+        String(
+          (updatedIncident as any)?.estado ??
+          (updatedIncident as any)?.estado_actual ??
+          ''
+        ).toLowerCase()
+      );
+
+      // Re-read cache AFTER fetch to detect concurrent updates from other handlers
+      const incidents = this.incidentsSubject.value;
+      const index = incidents.findIndex(i => i.id === data.incident_id);
+
+      if (index !== -1 && incidents[index].estado_actual === 'sin_taller_disponible') {
+        console.log(`⏭️ Skipping timeout update: incident ${data.incident_id} already in sin_taller_disponible`);
+        return;
+      }
+
       // Convert to LegacyIncident format manually
       const legacyIncident: LegacyIncident = {
         id: updatedIncident.id,
@@ -750,8 +855,8 @@ export class IncidentsService {
         longitud: updatedIncident.longitud ?? 0,
         direccion_referencia: updatedIncident.direccion_referencia || '',
         descripcion: updatedIncident.descripcion,
-        estado_actual: updatedIncident.estado,
-        estado_label: updatedIncident.estado,
+        estado_actual: normalizedStatus,
+        estado_label: normalizedStatus,
         categoria_ia: updatedIncident.ai_analysis?.suggested_category || null,
         prioridad_ia: updatedIncident.ai_analysis?.suggested_priority || null,
         prioridad_label: updatedIncident.ai_analysis?.suggested_priority || 'media',
@@ -778,12 +883,16 @@ export class IncidentsService {
           cliente_id: updatedIncident.vehiculo.cliente_id
         } : undefined
       };
-      
-      // Update the incident in the cache
-      const incidents = this.incidentsSubject.value;
-      const index = incidents.findIndex(i => i.id === data.incident_id);
-      
+
       if (index !== -1) {
+        const currentUser = this.authService.currentUser();
+        if (currentUser?.user_type === 'workshop' && normalizedStatus === 'sin_taller_disponible') {
+          const filteredIncidents = incidents.filter(i => i.id !== data.incident_id);
+          this.incidentsSubject.next(filteredIncidents);
+          console.log(`🚫 Incident ${data.incident_id} removed from workshop list (sin_taller_disponible)`);
+          return;
+        }
+
         // Update existing incident
         incidents[index] = legacyIncident;
         this.incidentsSubject.next([...incidents]);
@@ -810,11 +919,21 @@ export class IncidentsService {
    * ✅ CORREGIDO: Usa inmutabilidad completa
    */
   private handleIncidentCancelled(data: any): void {
-    const incidentId = data?.incident_id;
+    const incidentId = this.toInt(data?.incident_id);
     if (!incidentId) return;
 
     const incidents = this.incidentsSubject.value;
     const index = incidents.findIndex(i => i.id === incidentId);
+
+    const currentUser = this.authService.currentUser();
+    if (currentUser?.user_type === 'workshop') {
+      const filtered = incidents.filter(i => i.id !== incidentId);
+      if (filtered.length !== incidents.length) {
+        this.incidentsSubject.next(filtered);
+        console.log(`🚫 Incidente ${incidentId} removido de la lista del taller (cancelado)`);
+      }
+      return;
+    }
 
     if (index !== -1) {
       // ✅ CORREGIDO: Crear copia del array antes de modificar
@@ -824,6 +943,23 @@ export class IncidentsService {
       });
       this.incidentsSubject.next(updated);
       console.log(`✅ Incidente ${incidentId} marcado como cancelado`);
+    }
+  }
+
+  private handleMutualCancellationApproved(data: any): void {
+    const incidentId = this.toInt(data?.incident_id);
+    if (!incidentId) return;
+
+    const currentUser = this.authService.currentUser();
+    if (currentUser?.user_type !== 'workshop') {
+      return;
+    }
+
+    const incidents = this.incidentsSubject.value;
+    const filtered = incidents.filter(i => i.id !== incidentId);
+    if (filtered.length !== incidents.length) {
+      this.incidentsSubject.next(filtered);
+      console.log(`🚫 Incident ${incidentId} removed from workshop list (cancellation.approved)`);
     }
   }
 
@@ -1096,7 +1232,7 @@ export class IncidentsService {
   private handleNoWorkshopAvailable(data: any): void {
     console.log('📨 No workshop available event:', data);
     
-    const incidentId = data?.incident_id;
+    const incidentId = this.toInt(data?.incident_id);
     if (!incidentId) return;
     
     // ✅ VALIDAR: Solo procesar si el usuario es un taller
@@ -1107,13 +1243,15 @@ export class IncidentsService {
       return;
     }
     
-    // ✅ Remover el incidente de la vista del taller
+    // ✅ Actualizar estado a sin_taller_disponible para que el componente lo filtre
     const incidents = this.incidentsSubject.value;
-    const filtered = incidents.filter(i => i.id !== incidentId);
+    const index = incidents.findIndex(i => i.id === incidentId);
     
-    if (filtered.length !== incidents.length) {
+    if (index !== -1) {
+      // Talleres no deben seguir visualizando la card cuando queda sin taller disponible.
+      const filtered = incidents.filter(i => i.id !== incidentId);
       this.incidentsSubject.next(filtered);
-      console.log(`🚫 Incidente ${incidentId} removido de la vista (sin taller disponible)`);
+      console.log(`🚫 Incidente ${incidentId} removido de la lista del taller (sin_taller_disponible)`);
     }
   }
 
@@ -1194,7 +1332,51 @@ export class IncidentsService {
   /**
    * Transform legacy incident format to new model format
    */
-  private transformLegacyIncident(legacy: LegacyIncident): Incident {
+  public transformLegacyIncident(legacy: LegacyIncident): Incident {
+    // Build categoria from categoria_ia string
+    const categoria = legacy.categoria_ia
+      ? { id: 0, nombre: legacy.categoria_ia, descripcion: '', icono: null as string | null }
+      : undefined;
+
+    // Build suggested_technician from legacy data
+    let suggested: any = null;
+    if (legacy.suggested_technician) {
+      suggested = {
+        technician_id: legacy.suggested_technician.technician_id,
+        technician_name: legacy.suggested_technician.technician_name || '',
+        distance_km: legacy.suggested_technician.distance_km || 0,
+        compatibility_score: legacy.suggested_technician.compatibility_score || 0,
+        timeout_at: (legacy.suggested_technician as any).timeout_at || '',
+        assigned_at: legacy.assigned_at || legacy.created_at,
+      };
+    }
+
+    // Build taller (workshop) from legacy data
+    const taller = legacy.taller
+      ? {
+          id: legacy.taller.id,
+          nombre: (legacy.taller as any).workshop_name || (legacy.taller as any).nombre || '',
+          direccion: legacy.taller.direccion || '',
+          telefono: legacy.taller.telefono || '',
+          email: (legacy.taller as any).email || '',
+          latitud: legacy.taller.latitud || 0,
+          longitud: legacy.taller.longitud || 0,
+        }
+      : undefined;
+
+    // Build tecnico (technician) from legacy data
+    const tecnico = legacy.tecnico
+      ? {
+          id: legacy.tecnico.id,
+          nombre: legacy.tecnico.nombre || '',
+          apellido: legacy.tecnico.apellido || '',
+          telefono: legacy.tecnico.telefono || '',
+          especialidades: (legacy.tecnico as any).especialidades || [],
+          taller_id: legacy.taller_id || 0,
+          disponible: (legacy.tecnico as any).disponible ?? true,
+        }
+      : undefined;
+
     return {
       id: legacy.id,
       descripcion: legacy.descripcion,
@@ -1207,7 +1389,7 @@ export class IncidentsService {
         apellido: legacy.cliente.apellido,
         email: legacy.cliente.email,
         telefono: legacy.cliente.telefono,
-        created_at: legacy.cliente.created_at
+        created_at: legacy.cliente.created_at,
       } : undefined,
       vehiculo_id: legacy.vehiculo_id,
       vehiculo: legacy.vehiculo ? {
@@ -1216,27 +1398,27 @@ export class IncidentsService {
         modelo: legacy.vehiculo.modelo,
         anio: legacy.vehiculo.anio,
         placa: legacy.vehiculo.placa,
-        color: '', // Default value, should come from backend
-        cliente_id: legacy.cliente_id
+        color: (legacy.vehiculo as any).color || '',
+        cliente_id: legacy.cliente_id,
       } : undefined,
-      categoria_id: 1, // Default category, should come from backend
-      categoria: undefined, // Should come from backend
+      categoria_id: 0,
+      categoria,
       taller_id: legacy.taller_id,
-      taller: undefined, // Should come from backend
+      taller,
       tecnico_id: legacy.tecnico_id,
-      tecnico: undefined, // Should come from backend
+      tecnico,
       ubicacion: legacy.direccion_referencia,
       latitud: legacy.latitud,
       longitud: legacy.longitud,
       direccion_referencia: legacy.direccion_referencia,
-      suggested_technician: null, // Should come from backend if available
+      suggested_technician: suggested,
       rejection_count: 0,
       has_timeout: false,
-      timeout_at: null,
+      timeout_at: (legacy as any).timeout_at || null,
       created_at: legacy.created_at,
       updated_at: legacy.updated_at,
-      evidencias: undefined, // Should come from backend
-      ai_analysis: undefined // Should come from backend
+      evidencias: undefined,
+      ai_analysis: undefined,
     };
   }
 
@@ -1257,13 +1439,24 @@ export class IncidentsService {
   private mapStatus(status: string): 'pendiente' | 'asignado' | 'aceptado' | 'en_camino' | 'en_proceso' | 'resuelto' | 'cancelado' | 'sin_taller_disponible' {
     const statusMap: Record<string, any> = {
       'pendiente': 'pendiente',
+      'pending': 'pendiente',
       'asignado': 'asignado',
+      'assigned': 'asignado',
       'aceptado': 'aceptado',
+      'accepted': 'aceptado',
       'en_camino': 'en_camino',
+      'on_way': 'en_camino',
       'en_proceso': 'en_proceso',
+      'in_progress': 'en_proceso',
       'resuelto': 'resuelto',
+      'resolved': 'resuelto',
       'cancelado': 'cancelado',
-      'sin_taller_disponible': 'sin_taller_disponible'
+      'cancelled': 'cancelado',
+      'sin_taller_disponible': 'sin_taller_disponible',
+      'sin_taller_asignado': 'sin_taller_disponible',
+      'sin taller disponible': 'sin_taller_disponible',
+      'sin taller asignado': 'sin_taller_disponible',
+      'no_workshop_available': 'sin_taller_disponible'
     };
     return statusMap[status] || 'pendiente';
   }

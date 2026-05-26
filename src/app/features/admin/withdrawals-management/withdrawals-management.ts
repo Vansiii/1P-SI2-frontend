@@ -1,7 +1,9 @@
-import { Component, ChangeDetectionStrategy, inject, signal, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, computed, DestroyRef, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PaymentService, Withdrawal } from '../../../core/services/payment.service';
+import { AdminRealtimeService } from '../../../core/services/admin-realtime.service';
 
 @Component({
   selector: 'app-withdrawals-management',
@@ -373,6 +375,8 @@ import { PaymentService, Withdrawal } from '../../../core/services/payment.servi
 })
 export class WithdrawalsManagementComponent implements OnInit {
   private paymentService = inject(PaymentService);
+  private adminRealtimeService = inject(AdminRealtimeService);
+  private destroyRef = inject(DestroyRef);
 
   withdrawals = signal<Withdrawal[]>([]);
   isLoading = signal(false);
@@ -389,6 +393,24 @@ export class WithdrawalsManagementComponent implements OnInit {
 
   ngOnInit() {
     this.loadWithdrawals();
+    this.adminRealtimeService.withdrawalUpdates$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((event) => {
+        if (event.type === 'withdrawal.created') {
+          const current = this.withdrawals();
+          this.withdrawals.set([event, ...current]);
+          this.updateCounts(this.withdrawals());
+        } else if (event.type === 'withdrawal.status_changed') {
+          const current = this.withdrawals();
+          const idx = current.findIndex(w => w.id === event.id);
+          if (idx !== -1) {
+            const updated = [...current];
+            updated[idx] = { ...updated[idx], status: event.status, admin_notes: event.admin_notes };
+            this.withdrawals.set(updated);
+            this.updateCounts(updated);
+          }
+        }
+      });
   }
 
   loadWithdrawals() {

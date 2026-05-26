@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PaymentService, WalletInfo, FinancialMovement, Withdrawal } from '../../../core/services/payment.service';
+import { AdminRealtimeService } from '../../../core/services/admin-realtime.service';
 
 @Component({
   selector: 'app-workshop-wallet',
@@ -444,6 +445,7 @@ import { PaymentService, WalletInfo, FinancialMovement, Withdrawal } from '../..
 })
 export class WorkshopWalletComponent implements OnInit {
   private readonly paymentService = inject(PaymentService);
+  private readonly adminRealtimeService = inject(AdminRealtimeService);
   private readonly destroyRef = inject(DestroyRef);
 
   wallet = signal<WalletInfo | null>(null);
@@ -464,6 +466,66 @@ export class WorkshopWalletComponent implements OnInit {
   ngOnInit() {
     this.loadWallet();
     this.loadHistory();
+
+    // Subscribe to real-time wallet updates
+    this.adminRealtimeService.walletUpdates$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(event => {
+        const current = this.wallet();
+        if (!current || !event) return;
+
+        switch (event.type) {
+          case 'payment.received':
+            this.wallet.set({
+              ...current,
+              available_balance: (current.available_balance || 0) + (event.amount || 0),
+              total_earned: (current.total_earned || 0) + (event.amount || 0)
+            });
+            if (event.movement) {
+              this.movements.update(ms => [event.movement, ...ms]);
+            }
+            break;
+          case 'wallet.balance_updated':
+          case 'workshop.balance_updated':
+            if (event.available_balance != null) {
+              this.wallet.set({
+                ...current,
+                available_balance: event.available_balance,
+                pending_balance: event.pending_balance ?? current.pending_balance,
+                total_earned: event.total_earned ?? current.total_earned,
+                total_withdrawn: event.total_withdrawn ?? current.total_withdrawn,
+                updated_at: event.updated_at || new Date().toISOString()
+              });
+            }
+            break;
+        }
+      });
+
+    // Subscribe to real-time withdrawal status changes
+    this.adminRealtimeService.withdrawalUpdates$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(event => {
+        if (!event) return;
+
+        if (event.type === 'withdrawal.status_changed') {
+          this.withdrawals.update(ws => ws.map(w =>
+            w.id === event.withdrawal_id ? { ...w, status: event.new_status } : w
+          ));
+          if (event.available_balance != null) {
+            const current = this.wallet();
+            if (current) {
+              this.wallet.set({
+                ...current,
+                available_balance: event.available_balance,
+                pending_balance: event.pending_balance ?? current.pending_balance,
+                total_withdrawn: event.new_status === 'paid'
+                  ? (current.total_withdrawn || 0) + (event.amount || 0)
+                  : current.total_withdrawn
+              });
+            }
+          }
+        }
+      });
   }
 
   loadWallet() {
