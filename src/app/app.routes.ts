@@ -51,6 +51,18 @@ export const routes: Routes = [
     ]
   },
   {
+    path: 'account-pending',
+    loadComponent: () => import('./features/workshop/account-pending/account-pending').then(m => m.AccountPendingComponent)
+  },
+  {
+    path: 'account-rejected',
+    loadComponent: () => import('./features/workshop/account-rejected/account-rejected').then(m => m.AccountRejectedComponent)
+  },
+  {
+    path: 'account-suspended',
+    loadComponent: () => import('./features/workshop/account-suspended/account-suspended').then(m => m.AccountSuspendedComponent)
+  },
+  {
     path: 'admin',
     canActivate: [authGuard],
     component: PrivateShellComponent,
@@ -87,6 +99,18 @@ export const routes: Routes = [
       {
         path: 'reports',
         loadComponent: () => import('./features/admin/reports/admin-reports').then(m => m.AdminReportsComponent)
+      },
+      {
+        path: 'tenant-requests',
+        loadComponent: () => import('./features/admin/tenant-requests/tenant-requests').then(m => m.TenantRequestsComponent)
+      },
+      {
+        path: 'subscriptions',
+        loadComponent: () => import('./features/admin/subscription-management/subscription-management').then(m => m.SubscriptionManagementComponent)
+      },
+      {
+        path: 'plans',
+        loadComponent: () => import('./features/admin/plan-management/plan-management').then(m => m.PlanManagementComponent)
       }
     ]
   },
@@ -118,6 +142,10 @@ export const routes: Routes = [
       {
         path: 'reports',
         loadComponent: () => import('./features/workshop/reports/workshop-reports').then(m => m.WorkshopReportsComponent)
+      },
+      {
+        path: 'subscription',
+        loadComponent: () => import('./features/workshop/subscription/subscription').then(m => m.SubscriptionPageComponent)
       }
     ]
   },

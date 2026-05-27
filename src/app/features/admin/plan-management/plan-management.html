@@ -1,0 +1,120 @@
+<div class="plan-mgmt-page">
+  <header class="page-header">
+    <div>
+      <h1 class="page-title">Planes de Suscripcion</h1>
+      <p class="page-subtitle">Catalogo de planes disponibles para talleres</p>
+    </div>
+    <button class="btn-primary" (click)="startCreate()">+ Nuevo plan</button>
+  </header>
+
+  @if (error()) { <div class="alert-banner"><p>{{ error() }}</p></div> }
+
+  @if (isLoading()) {
+    <div class="loading-state"><span class="spinner"></span><p>Cargando planes...</p></div>
+  }
+
+  @if (!isLoading()) {
+    <div class="plans-cards">
+      @for (plan of plans(); track plan.id) {
+        <div class="plan-card" [class.inactive]="!plan.is_active">
+          <div class="plan-card-top">
+            <div class="plan-card-header">
+              <h3>{{ plan.name }}</h3>
+              <span class="plan-code">{{ plan.code }}</span>
+            </div>
+            <div class="plan-price">
+              @if (plan.price === 0) { Gratuito } @else { ${{ plan.price.toFixed(2) }}/{{ plan.billing_period === 'monthly' ? 'mes' : 'año' }} }
+            </div>
+            @if (plan.description) { <p class="plan-desc">{{ plan.description }}</p> }
+            <div class="plan-limits">
+              <span>{{ plan.max_technicians }} tecnicos</span>
+              <span>{{ plan.max_services }} servicios</span>
+            </div>
+            <div class="plan-features">
+              @for (key of ['enable_kpis','enable_reports','enable_realtime_tracking','enable_quotes','enable_voice_reports','enable_priority_support']; track key) {
+                <span class="feat-tag" [class.on]="getPlanFeature(plan, key)" [class.off]="!getPlanFeature(plan, key)">{{ featureLabel(key) }}</span>
+              }
+            </div>
+          </div>
+          <div class="plan-card-actions">
+            <button class="btn-ghost-sm" (click)="startEdit(plan)">Editar</button>
+            <button class="btn-toggle" [class.active]="plan.is_active" [class.inactive]="!plan.is_active" (click)="toggle(plan.id)">
+              {{ plan.is_active ? 'Activo' : 'Inactivo' }}
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Create/Edit Modal -->
+  @if (editing()) {
+    <div class="modal-overlay" (click)="cancelEdit()">
+      <div class="modal-box" (click)="$event.stopPropagation()">
+        <h3 class="modal-title">{{ isCreating() ? 'Nuevo plan' : 'Editar plan' }}</h3>
+
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Codigo</label>
+            <input [(ngModel)]="editing()!.code" placeholder="basic" [disabled]="!isCreating()" />
+          </div>
+          <div class="form-group">
+            <label>Nombre</label>
+            <input [(ngModel)]="editing()!.name" placeholder="Plan Basico" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Descripcion</label>
+          <textarea [(ngModel)]="editing()!.description" rows="2" placeholder="Descripcion del plan..."></textarea>
+        </div>
+
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label>Precio (USD)</label>
+            <input type="number" [(ngModel)]="editing()!.price" step="0.01" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Periodo</label>
+            <select [(ngModel)]="editing()!.billing_period">
+              <option value="monthly">Mensual</option>
+              <option value="yearly">Anual</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Orden</label>
+            <input type="number" [(ngModel)]="editing()!.sort_order" min="0" />
+          </div>
+        </div>
+
+        <div class="form-grid-3">
+          <div class="form-group">
+            <label>Max tecnicos</label>
+            <input type="number" [(ngModel)]="editing()!.max_technicians" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Max servicios</label>
+            <input type="number" [(ngModel)]="editing()!.max_services" min="1" />
+          </div>
+        </div>
+
+        <label style="font-size:0.8125rem;font-weight:600;color:#374151;margin:0.75rem 0 0.5rem;display:block;">Funcionalidades</label>
+        <div class="feat-checks">
+          @for (key of ['enable_kpis','enable_reports','enable_realtime_tracking','enable_quotes','enable_voice_reports','enable_priority_support']; track key) {
+            <label class="feat-check">
+              <input type="checkbox" [ngModel]="getEditingFeature(key)" (ngModelChange)="setEditingFeature(key, $event)" />
+              {{ featureLabel(key) }}
+            </label>
+          }
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-secondary" (click)="cancelEdit()">Cancelar</button>
+          <button class="btn-primary" (click)="save()" [disabled]="isSaving() || !editing()!.code || !editing()!.name">
+            {{ isSaving() ? 'Guardando...' : (isCreating() ? 'Crear plan' : 'Guardar cambios') }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

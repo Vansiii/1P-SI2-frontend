@@ -36,6 +36,8 @@ export class AuthService {
   private readonly refreshTokenSignal = signal<string | null>(null);
   private readonly userSignal = signal<AppUserProfile | null>(null);
   private readonly isRestoringSession = signal<boolean>(false);
+  readonly tenantStatus = signal<string | null>(null);
+  readonly tenantId = signal<number | null>(null);
 
   readonly user = this.userSignal.asReadonly();
   readonly isAuthenticated = computed(() => {
@@ -154,30 +156,29 @@ export class AuthService {
     console.log('📡 Subscription created:', subscription);
   }
 
-  registerWorkshop(registrationRequest: RegisterWorkshopRequest): Observable<AuthTokenResponse> {
+  registerWorkshop(registrationRequest: RegisterWorkshopRequest): Observable<{ tenant_id: number; status: string; access_token: string; checkout_url?: string }> {
     return this.httpClient
-      .post<ApiResponse<{ user: AppUserProfile; tokens: Omit<AuthTokenResponse, 'user'> }>>(
+      .post<ApiResponse<{ tenant_id: number; status: string; workshop_id: number; access_token: string; token_type: string; checkout_url?: string }>>(
         `${this.apiBaseUrl}/auth/register/workshop`,
         registrationRequest
       )
       .pipe(
-        switchMap((response) => {
-          const authResponse: AuthTokenResponse = {
-            ...response.data.tokens,
-            user: response.data.user,
-          };
-          this.persistSession(authResponse);
-          
-          // Fetch complete user profile to ensure all fields are loaded
-          return this.fetchCurrentUser().pipe(
-            map(() => authResponse)
-          );
+        map((response) => {
+          const data = response.data;
+          if (data.access_token && !data.checkout_url) {
+            this.accessTokenSignal.set(data.access_token);
+            this.tenantStatus.set(data.status);
+            this.tenantId.set(data.tenant_id);
+            localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+            this.fetchCurrentUser().subscribe();
+          }
+          return { tenant_id: data.tenant_id, status: data.status, access_token: data.access_token, checkout_url: data.checkout_url };
         })
       );
   }
 
-  // Backwards-compatible alias for previous workshop-only registration.
-  register(registrationRequest: RegisterWorkshopRequest): Observable<AuthTokenResponse> {
+  // Backwards-compatible alias
+  register(registrationRequest: RegisterWorkshopRequest): Observable<{ tenant_id: number; status: string; access_token: string }> {
     return this.registerWorkshop(registrationRequest);
   }
 
@@ -239,6 +240,13 @@ export class AuthService {
         tap((userProfile) => {
           console.log('✅ Setting user profile in signal');
           this.userSignal.set(userProfile);
+
+          if (userProfile.tenant_id != null) {
+            this.tenantId.set(userProfile.tenant_id);
+          }
+          if (userProfile.tenant_status != null) {
+            this.tenantStatus.set(userProfile.tenant_status);
+          }
         }),
         catchError((error) => {
           console.error('❌ ERROR in fetchCurrentUser:');

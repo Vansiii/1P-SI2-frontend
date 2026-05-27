@@ -31,6 +31,8 @@ export interface AppUserProfile {
   email_verified?: boolean;
   last_login?: string | null;
   last_password_change_at?: string | null;
+  tenant_id?: number | null;
+  tenant_status?: string | null;
 }
 
 export interface RegisterWorkshopRequest {
@@ -38,13 +40,20 @@ export interface RegisterWorkshopRequest {
   last_name: string;
   phone: string;
   workshop_name: string;
-  owner_name: string;
-  address?: string | null;
   email: string;
   password: string;
   latitude: number;
   longitude: number;
   coverage_radius_km: number;
+  legal_name: string;
+  nit: string;
+  business_type?: string | null;
+  address?: string | null;
+  description?: string | null;
+  coverage_zone?: string | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+  plan_id?: number | null;
 }
 
 export interface LoginRequest {

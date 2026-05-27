@@ -254,6 +254,14 @@ export class WebSocketService {
           return;
         }
 
+        // Tenant not active (4003) — don't reconnect
+        if (event.code === 4003) {
+          console.warn('Account not active, stopping WebSocket reconnection');
+          this.updateConnectionState('disconnected', 'Cuenta no activa');
+          this.reconnectAttemptsSignal.set(this.maxReconnectAttempts);
+          return;
+        }
+
         // Attempt reconnection if not a normal closure
         if (event.code !== 1000 && this.reconnectAttemptsSignal() < this.maxReconnectAttempts) {
           this.handleReconnect();
