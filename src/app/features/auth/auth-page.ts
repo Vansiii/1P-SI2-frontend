@@ -6,6 +6,14 @@ import { AuthService } from '../../core/services/auth.service';
 import { LocationPickerComponent } from './location-picker/location-picker';
 import { PasswordInputComponent } from '../../shared/ui/password-input/password-input';
 import { extractErrorWithMetadata } from '../../core/utils/error-handler.util';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
+
+interface PlanInfo {
+  id: number; code: string; name: string; price: number; billing_period: string;
+  enable_kpis: boolean; enable_reports: boolean; enable_realtime_tracking: boolean;
+  enable_quotes: boolean; enable_voice_reports: boolean; enable_priority_support: boolean;
+}
 
 const LOGIN_LOCKOUT_UNTIL_KEY = 'auth_login_lockout_until';
 
@@ -21,11 +29,14 @@ export class AuthPageComponent implements OnInit, OnDestroy {
   private readonly formBuilder = inject(FormBuilder);
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly http = inject(HttpClient);
 
   readonly mode = signal<'login' | 'register'>('login');
   readonly isSubmitting = signal(false);
   readonly errorMessage = signal<string | null>(null);
   readonly infoMessage = signal<string | null>(null);
+  readonly availablePlans = signal<PlanInfo[]>([]);
+  readonly selectedPlanId = signal<number | null>(null);
 
   private errorMessageTimeout?: ReturnType<typeof setTimeout>;
   private infoMessageTimeout?: ReturnType<typeof setTimeout>;
@@ -37,6 +48,8 @@ export class AuthPageComponent implements OnInit, OnDestroy {
   readonly lockoutRemainingSeconds = signal(0);
   readonly isLoginLocked = computed(() => this.lockoutRemainingSeconds() > 0);
   readonly lockoutTimerLabel = computed(() => this.formatDuration(this.lockoutRemainingSeconds()));
+  readonly registrationSuccess = signal(false);
+  readonly tenantPendingMessage = signal<string | null>(null);
 
   private lockoutIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -49,15 +62,20 @@ export class AuthPageComponent implements OnInit, OnDestroy {
     first_name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(60)]],
     last_name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(60)]],
     phone: ['', [Validators.required, Validators.minLength(7), Validators.maxLength(20)]],
-    workshop_name: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(120)]],
-    owner_name: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(120)]],
-    address: ['', [Validators.maxLength(255)]],
     email: ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required, Validators.minLength(8)]],
     confirmPassword: ['', [Validators.required]],
+    workshop_name: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(120)]],
+    legal_name: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(255)]],
+    nit: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(20)]],
+    business_type: ['', []],
+    address: ['', [Validators.maxLength(255)]],
+    description: ['', [Validators.maxLength(500)]],
+    coverage_zone: ['', [Validators.maxLength(255)]],
     latitude: [0, [Validators.required]],
     longitude: [0, [Validators.required]],
     coverage_radius_km: [10, [Validators.required, Validators.min(1), Validators.max(100)]],
+    plan_id: [null as number | null, []],
   });
 
   ngOnInit(): void {
@@ -71,6 +89,29 @@ export class AuthPageComponent implements OnInit, OnDestroy {
   setMode(nextMode: 'login' | 'register'): void {
     this.mode.set(nextMode);
     this.clearAllMessages();
+    if (nextMode === 'register') {
+      this.loadPlans();
+    }
+  }
+
+  selectPlan(id: number): void {
+    this.selectedPlanId.set(id);
+    this.workshopRegisterForm.patchValue({ plan_id: id });
+  }
+
+  private loadPlans(): void {
+    const api = environment.apiBaseUrl.replace(/\/api\/v1\/?$/, '');
+    this.http.get<{ data: PlanInfo[] }>(`${api}/api/v1/subscription-plans`)
+      .subscribe({
+        next: r => {
+          this.availablePlans.set(r.data);
+          if (r.data.length > 0) {
+            const basic = r.data.find(p => p.price === 0) || r.data[0];
+            this.selectPlan(basic.id);
+          }
+        },
+        error: () => {},
+      });
   }
 
   private clearAllMessages(): void {
@@ -177,12 +218,11 @@ export class AuthPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Validate password match
     const password = this.workshopRegisterForm.value.password;
     const confirmPassword = this.workshopRegisterForm.value.confirmPassword;
     
     if (password !== confirmPassword) {
-      this.setErrorMessage('Las contraseñas no coinciden');
+      this.setErrorMessage('Las contrasenas no coinciden');
       return;
     }
 
@@ -190,13 +230,30 @@ export class AuthPageComponent implements OnInit, OnDestroy {
     this.infoMessage.set(null);
     this.isSubmitting.set(true);
 
-    const { confirmPassword: _, ...workshopPayload } = this.workshopRegisterForm.getRawValue();
+    const { confirmPassword: _, ...formData } = this.workshopRegisterForm.getRawValue();
+    const payload: any = { ...formData };
+    if (!payload.plan_id) delete payload.plan_id;
+    if (!payload.business_type) payload.business_type = null;
+    if (!payload.description) payload.description = null;
+    if (!payload.coverage_zone) payload.coverage_zone = null;
+
     this.authService
-      .registerWorkshop(workshopPayload as any)
+      .registerWorkshop(payload)
       .pipe(finalize(() => this.isSubmitting.set(false)))
       .subscribe({
-        next: () => {
-          this.router.navigate(['/dashboard']);
+        next: (result) => {
+          if (result.checkout_url) {
+            window.location.href = result.checkout_url;
+            return;
+          }
+          this.registrationSuccess.set(true);
+          if (result.status === 'pending') {
+            this.tenantPendingMessage.set(
+              'Taller registrado exitosamente. Puedes iniciar sesion y configurar tu perfil. ' +
+              'Las funcionalidades completas se activaran cuando un administrador apruebe tu cuenta.'
+            );
+          }
+          this.setInfoMessage(this.tenantPendingMessage()!);
         },
         error: (error) => {
           this.setErrorMessage(this.extractAuthError(error, 'No se pudo registrar el taller.').message);

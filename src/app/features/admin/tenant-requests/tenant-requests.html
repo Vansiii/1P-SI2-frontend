@@ -1,0 +1,96 @@
+<div class="tenant-requests-page">
+  <header class="page-header">
+    <div>
+      <h1 class="page-title">Solicitudes de Registro</h1>
+      <p class="page-subtitle">Talleres pendientes de aprobacion</p>
+    </div>
+    <span class="badge-count">{{ pending().length }} pendientes</span>
+  </header>
+
+  @if (error()) {
+    <div class="alert-banner" role="alert">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <p>{{ error() }}</p>
+    </div>
+  }
+
+  @if (isLoading()) {
+    <div class="loading-state">
+      <span class="spinner"></span>
+      <p>Cargando solicitudes...</p>
+    </div>
+  }
+
+  @if (!isLoading() && pending().length === 0) {
+    <div class="empty-state">
+      <div class="empty-icon">&#9989;</div>
+      <h3>Sin solicitudes pendientes</h3>
+      <p>Todas las solicitudes de registro han sido procesadas.</p>
+    </div>
+  }
+
+  @if (!isLoading() && pending().length > 0) {
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Taller</th>
+            <th>Razon Social / NIT</th>
+            <th>Dueño</th>
+            <th>Plan</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (t of pending(); track t.tenant_id) {
+            <tr>
+              <td>
+                <span class="cell-name">{{ t.workshop_name }}</span>
+                @if (t.address) { <span class="cell-sub">{{ t.address }}</span> }
+              </td>
+              <td>
+                <span>{{ t.legal_name }}</span>
+                <span class="cell-sub">NIT: {{ t.nit }}</span>
+                @if (t.business_type) { <span class="cell-sub">{{ t.business_type === 'persona_natural' ? 'Persona Natural' : 'Persona Juridica' }}</span> }
+              </td>
+              <td>
+                <span>{{ t.owner_name }}</span>
+                <span class="cell-sub">{{ t.owner_email }}</span>
+              </td>
+              <td>
+                <span class="plan-tag">{{ t.plan_name || 'Sin plan' }}</span>
+              </td>
+              <td>{{ formatDate(t.created_at) }}</td>
+              <td class="actions-cell">
+                <button class="btn-approve" (click)="approve(t.tenant_id)" title="Aprobar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  Aprobar
+                </button>
+                <button class="btn-reject" (click)="openReject(t)" title="Rechazar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  Rechazar
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <!-- Reject Modal -->
+  @if (rejectingId()) {
+    <div class="modal-overlay" (click)="cancelReject()">
+      <div class="modal-box" (click)="$event.stopPropagation()">
+        <h3 class="modal-title">Rechazar solicitud</h3>
+        <p class="modal-desc">Indica el motivo del rechazo. Se notificara al taller por correo.</p>
+        <textarea class="modal-textarea" [(ngModel)]="rejectionReason" placeholder="Motivo del rechazo..." rows="3"></textarea>
+        <div class="modal-actions">
+          <button class="btn-secondary" (click)="cancelReject()">Cancelar</button>
+          <button class="btn-danger" (click)="confirmReject()" [disabled]="!rejectionReason().trim()">Rechazar</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

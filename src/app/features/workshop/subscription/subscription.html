@@ -1,0 +1,191 @@
+<div class="subscription-page">
+  <header class="page-header">
+    <h1 class="page-title">Mi Suscripcion</h1>
+    <p class="page-subtitle">Gestiona tu plan y funcionalidades</p>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading-state">
+      <span class="spinner"></span>
+      <p>Cargando suscripcion...</p>
+    </div>
+  }
+
+  @if (error()) {
+    <div class="alert-banner" role="alert">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <p>{{ error() }}</p>
+    </div>
+  }
+
+  @if (!isLoading() && subscription()) {
+    <div class="sub-card">
+      <div class="sub-header">
+        <div>
+          <span class="plan-badge">{{ subscription()!.plan.name }}</span>
+          <span class="status-dot" [style.background]="statusColor(subscription()!.status)"></span>
+          <span class="status-text" [style.color]="statusColor(subscription()!.status)">
+            {{ statusLabel(subscription()!.status) }}
+          </span>
+        </div>
+        <span class="plan-price">{{ formatCurrency(subscription()!.plan.price) }}</span>
+      </div>
+
+      <p class="plan-desc">{{ subscription()!.plan.description }}</p>
+
+      <div class="sub-dates">
+        <div class="date-item">
+          <span class="date-label">Inicio del periodo</span>
+          <span class="date-value">{{ formatDate(subscription()!.current_period_start) }}</span>
+        </div>
+        <div class="date-item">
+          <span class="date-label">Vencimiento</span>
+          <span class="date-value">{{ formatDate(subscription()!.current_period_end) }}</span>
+        </div>
+      </div>
+
+      @if (isPendingDowngrade()) {
+        <div class="cancel-notice" style="background:#f5f3ff;border-color:#c4b5fd;color:#6d28d9;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22l1.18-7.86L2 9.27l6.91-1.01L12 2z"/></svg>
+          <span>
+            @if (subscription()!.pending_plan) {
+              Cambio programado a <strong>{{ subscription()!.pending_plan!.name }}</strong>.
+            } @else {
+              Cambio de plan programado.
+            }
+            Se aplicara al finalizar el periodo actual ({{ formatDate(subscription()!.current_period_end) }}).
+          </span>
+        </div>
+      }
+
+      @if (isPendingCancellation()) {
+        <div class="cancel-notice">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>Tu suscripcion se cancelara al final del periodo actual ({{ formatDate(subscription()!.current_period_end) }}).</span>
+        </div>
+      }
+
+      @if (subscription()!.status === 'past_due') {
+        <div class="cancel-notice" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>Pago pendiente. Actualiza tu metodo de pago para evitar la suspension.</span>
+        </div>
+      }
+
+      <div class="sub-actions">
+        @if (isPendingCancellation()) {
+          <button class="btn-primary" (click)="reactivateSubscription()" [disabled]="isSubscribing()">
+            Reactivar suscripcion
+          </button>
+        } @else {
+          <button class="btn-secondary" (click)="loadPlans()">
+            Cambiar plan
+          </button>
+          <button class="btn-danger-ghost" (click)="cancelSubscription()" [disabled]="isSubscribing()">
+            Cancelar suscripcion
+          </button>
+        }
+      </div>
+    </div>
+
+    <div class="sub-card" style="margin-top:1rem;">
+      <h3 class="section-title">Funcionalidades incluidas</h3>
+      <div class="features-grid">
+        <div class="feature-item">
+          <span class="feature-label">Tecnicos maximos</span>
+          <span class="feature-value">{{ subscription()!.plan.max_technicians }}</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-label">Servicios en catalogo</span>
+          <span class="feature-value">{{ subscription()!.plan.max_services }}</span>
+        </div>
+        @for (key of ['enable_kpis','enable_reports','enable_realtime_tracking','enable_quotes','enable_voice_reports','enable_priority_support']; track key) {
+          <div class="feature-item">
+            <span class="feature-label">{{ featureLabel(key) }}</span>
+            <span class="feature-icon" [class.enabled]="getPlanFeature(key)" [class.disabled]="!getPlanFeature(key)">
+              {{ getPlanFeature(key) ? '✓' : '✗' }}
+            </span>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  @if (!isLoading() && !subscription()) {
+    <div class="sub-card" style="text-align:center;">
+      <div style="font-size:3rem;margin-bottom:1rem;">📋</div>
+      <h3 style="margin-bottom:0.5rem;color:#0f172a;">Sin suscripcion activa</h3>
+      <p style="color:#64748b;margin-bottom:1.5rem;">Selecciona un plan para comenzar a usar todas las funcionalidades.</p>
+      <button class="btn-primary" (click)="loadPlans()">Ver planes</button>
+    </div>
+  }
+
+  @if (showPlans()) {
+    <div class="plans-overlay" (click)="showPlans.set(false); $event.stopPropagation()">
+      <div class="plans-modal" (click)="$event.stopPropagation()">
+        <div class="plans-header">
+          <h2>Planes disponibles</h2>
+          <button class="plans-close" (click)="showPlans.set(false)">&times;</button>
+        </div>
+        <div class="plans-grid">
+          @for (plan of plans(); track plan.id) {
+            <div class="plan-card" [class.current]="subscription()?.plan_id === plan.id">
+              <div class="plan-card-header">
+                <h3>{{ plan.name }}</h3>
+                <span class="plan-card-price">{{ formatCurrency(plan.price) }}</span>
+              </div>
+              <p class="plan-card-desc">{{ plan.description }}</p>
+              <ul class="plan-card-features">
+                <li>{{ plan.max_technicians }} tecnicos</li>
+                <li>{{ plan.max_services }} servicios</li>
+                <li [class.included]="plan.enable_kpis" [class.excluded]="!plan.enable_kpis">KPIs avanzados</li>
+                <li [class.included]="plan.enable_reports" [class.excluded]="!plan.enable_reports">Reportes PDF/Excel</li>
+                <li [class.included]="plan.enable_realtime_tracking" [class.excluded]="!plan.enable_realtime_tracking">Tracking en tiempo real</li>
+                <li [class.included]="plan.enable_quotes" [class.excluded]="!plan.enable_quotes">Cotizaciones</li>
+                <li [class.included]="plan.enable_priority_support" [class.excluded]="!plan.enable_priority_support">Soporte prioritario</li>
+              </ul>
+              @if (subscription()?.plan_id === plan.id) {
+                <span class="current-badge">Plan actual</span>
+              } @else {
+                <button class="btn-primary plan-btn" (click)="subscription() ? changePlan(plan.id) : subscribe(plan.id)" [disabled]="isSubscribing()">
+                  {{ subscription() ? 'Cambiar a este plan' : 'Contratar' }}
+                </button>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <div class="sub-card" style="margin-top:1rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3 class="section-title" style="margin-bottom:0;">Historial de facturas</h3>
+    </div>
+    @if (invoices().length > 0) {
+      <table class="invoice-table">
+        <thead>
+          <tr><th>Fecha</th><th>Monto</th><th>Estado</th><th>Factura</th></tr>
+        </thead>
+        <tbody>
+          @for (inv of invoices(); track inv.id) {
+            <tr>
+              <td>{{ formatDate(inv.created_at) }}</td>
+              <td>${{ inv.amount.toFixed(2) }} {{ inv.currency.toUpperCase() }}</td>
+              <td><span class="status-badge" [class.paid]="inv.status==='paid'">{{ invoiceStatusLabel(inv.status) }}</span></td>
+              <td>
+                @if (inv.invoice_url) {
+                  <a [href]="inv.invoice_url" target="_blank" class="invoice-download-link" title="Descargar factura">
+                    📄
+                  </a>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <p class="helper-note">Sin facturas disponibles</p>
+    }
+  </div>
+</div>

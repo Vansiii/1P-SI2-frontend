@@ -188,27 +188,67 @@
                 <input id="register-workshop" type="text" formControlName="workshop_name" placeholder="Ej: Motors 360" />
               </div>
               @if (workshopRegisterForm.controls.workshop_name.touched && workshopRegisterForm.controls.workshop_name.invalid) {
-                <span class="field-error">Obligatorio, mínimo 3 caracteres.</span>
+                <span class="field-error">Obligatorio, minimo 3 caracteres.</span>
               }
             </div>
 
             <div class="form-group">
-              <label for="register-owner">Nombre del propietario</label>
+              <label for="register-legal-name">Razon social</label>
               <div class="input-wrapper">
-                <input id="register-owner" type="text" formControlName="owner_name" placeholder="Nombre del dueño" />
+                <input id="register-legal-name" type="text" formControlName="legal_name" placeholder="Nombre legal de la empresa" />
               </div>
-              @if (workshopRegisterForm.controls.owner_name.touched && workshopRegisterForm.controls.owner_name.invalid) {
-                <span class="field-error">Obligatorio, mínimo 3 caracteres.</span>
+              @if (workshopRegisterForm.controls.legal_name.touched && workshopRegisterForm.controls.legal_name.invalid) {
+                <span class="field-error">Obligatorio, minimo 3 caracteres.</span>
               }
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="register-address">Dirección del taller</label>
-            <div class="input-wrapper">
-              <input id="register-address" type="text" formControlName="address" placeholder="Calle, número, zona" />
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="register-nit">NIT</label>
+              <div class="input-wrapper">
+                <input id="register-nit" type="text" formControlName="nit" placeholder="Numero de NIT" />
+              </div>
+              @if (workshopRegisterForm.controls.nit.touched && workshopRegisterForm.controls.nit.invalid) {
+                <span class="field-error">Obligatorio, minimo 3 caracteres.</span>
+              }
             </div>
-            <span class="field-hint">Dirección física del taller (opcional)</span>
+
+            <div class="form-group">
+              <label for="register-business-type">Tipo de empresa</label>
+              <div class="input-wrapper">
+                <select id="register-business-type" formControlName="business_type" style="width:100%;height:3rem;padding:0 1rem;font-size:0.9375rem;border:1.5px solid #e2e8f0;border-radius:10px;background:white;color:#0f172a;">
+                  <option value="">Seleccionar...</option>
+                  <option value="persona_natural">Persona Natural</option>
+                  <option value="persona_juridica">Persona Juridica</option>
+                </select>
+              </div>
+              <span class="field-hint">Tipo de identificacion fiscal (opcional)</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="register-address">Direccion del taller</label>
+            <div class="input-wrapper">
+              <input id="register-address" type="text" formControlName="address" placeholder="Calle, numero, zona" />
+            </div>
+            <span class="field-hint">Direccion fisica del taller (opcional)</span>
+          </div>
+
+          <div class="form-group">
+            <label for="register-description">Descripcion</label>
+            <div class="input-wrapper">
+              <textarea id="register-description" formControlName="description" placeholder="Describe brevemente tu taller..." rows="2" style="width:100%;padding:0.75rem 1rem;font-size:0.9375rem;font-family:inherit;border:1.5px solid #e2e8f0;border-radius:10px;background:white;color:#0f172a;resize:vertical;"></textarea>
+            </div>
+            <span class="field-hint">Breve descripcion de tus servicios (opcional)</span>
+          </div>
+
+          <div class="form-group">
+            <label for="register-zone">Zona de cobertura</label>
+            <div class="input-wrapper">
+              <input id="register-zone" type="text" formControlName="coverage_zone" placeholder="Ej: Zona Norte, La Paz" />
+            </div>
+            <span class="field-hint">Zona geografica donde operas (opcional)</span>
           </div>
 
           <div class="form-grid-2" style="margin-top: 1rem;">
@@ -273,8 +313,33 @@
             }
           </div>
 
-          <p class="helper-note">Registro exclusivo para talleres. Los clientes deben registrarse desde la aplicación móvil.</p>
-          
+          <p class="helper-note">Registro exclusivo para talleres. Los clientes deben registrarse desde la aplicacion movil.</p>
+
+          <!-- Seleccion de Plan (CU31) -->
+          <div style="margin-bottom:1.25rem;">
+            <label style="font-size:0.8125rem;font-weight:600;color:#374151;display:block;margin-bottom:0.625rem;">Selecciona tu plan</label>
+            <div class="plan-select-grid">
+              @if (availablePlans().length === 0) {
+                <div class="plan-select-loading">Cargando planes...</div>
+              }
+              @for (plan of availablePlans(); track plan.id) {
+                <label class="plan-select-card" [class.selected]="selectedPlanId() === plan.id" [class.featured]="plan.code === 'pro'">
+                  <div class="psc-header">
+                    <span class="psc-name">{{ plan.name }}</span>
+                    <span class="psc-price">{{ plan.price === 0 ? 'Gratis' : '$' + plan.price.toFixed(2) + '/mes' }}</span>
+                  </div>
+                  <ul class="psc-features">
+                    <li [class.included]="plan.enable_kpis" [class.excluded]="!plan.enable_kpis">KPIs avanzados</li>
+                    <li [class.included]="plan.enable_reports" [class.excluded]="!plan.enable_reports">Reportes PDF/Excel</li>
+                    <li [class.included]="plan.enable_realtime_tracking" [class.excluded]="!plan.enable_realtime_tracking">Tracking tiempo real</li>
+                    <li [class.included]="plan.enable_quotes" [class.excluded]="!plan.enable_quotes">Cotizaciones</li>
+                  </ul>
+                  <input type="radio" name="plan" [value]="plan.id" [checked]="selectedPlanId() === plan.id" (change)="selectPlan(plan.id)" style="display:none;" />
+                </label>
+              }
+            </div>
+          </div>
+
           <button type="submit" class="submit-btn" [disabled]="isSubmitting()">
             @if (isSubmitting()) {
               <span class="spinner"></span> 

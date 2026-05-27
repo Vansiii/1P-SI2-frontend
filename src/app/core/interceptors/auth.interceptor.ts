@@ -3,6 +3,7 @@ import { inject } from '@angular/core';
 import { catchError, switchMap, throwError } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { environment } from '../../../environments/environment';
 
 let isRefreshing = false;
@@ -38,10 +39,23 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
     catchError((error: HttpErrorResponse) => {
       logError(error);
 
-      // Si es 401 y no es la ruta de refresh, intentar refrescar token
       if (error.status === 401 && !request.url.includes('/tokens/refresh') && !isRefreshing) {
         console.log('🔄 Received 401, attempting token refresh...');
         return handleTokenRefresh(request, next, authService, http);
+      }
+
+      if (error.status === 403) {
+        const detail = error.error?.detail || '';
+        const router = inject(Router);
+        if (detail.includes('pendiente') || detail.includes('aprobacion')) {
+          router.navigate(['/account-pending']);
+        } else if (detail.includes('suspendida') || detail.includes('suspendido')) {
+          router.navigate(['/account-suspended']);
+        } else if (detail.includes('cancelada') || detail.includes('cancelado')) {
+          router.navigate(['/account-suspended']);
+        } else if (detail.includes('plan') || detail.includes('funcionalidad')) {
+          // Plan doesn't include this feature — just pass through the error
+        }
       }
 
       return throwError(() => error);

@@ -164,4 +164,42 @@ export class AdminService {
       })
       .pipe(map(() => void 0));
   }
+
+  // === Tenant & Subscription (CU29-CU31) ===
+
+  getPendingTenants(): Observable<any[]> {
+    return this.httpClient
+      .get<ApiResponse<any[]>>(`${this.apiBaseUrl}/admin/tenants/pending`)
+      .pipe(map((r) => r.data));
+  }
+
+  getTenantById(tenantId: number): Observable<any> {
+    return this.httpClient
+      .get<ApiResponse<any>>(`${this.apiBaseUrl}/admin/tenants/${tenantId}`)
+      .pipe(map((r) => r.data));
+  }
+
+  approveTenant(tenantId: number, planId?: number): Observable<any> {
+    return this.httpClient
+      .post<ApiResponse<any>>(`${this.apiBaseUrl}/admin/tenants/${tenantId}/approve`, { plan_id: planId || null })
+      .pipe(map((r) => r.data));
+  }
+
+  rejectTenant(tenantId: number, reason: string): Observable<any> {
+    return this.httpClient
+      .post<ApiResponse<any>>(`${this.apiBaseUrl}/admin/tenants/${tenantId}/reject`, { rejection_reason: reason })
+      .pipe(map((r) => r.data));
+  }
+
+  suspendTenant(tenantId: number, reason: string): Observable<any> {
+    return this.httpClient
+      .post<ApiResponse<any>>(`${this.apiBaseUrl}/admin/tenants/${tenantId}/suspend`, { reason })
+      .pipe(map((r) => r.data));
+  }
+
+  reactivateTenant(tenantId: number): Observable<any> {
+    return this.httpClient
+      .post<ApiResponse<any>>(`${this.apiBaseUrl}/admin/tenants/${tenantId}/reactivate`, {})
+      .pipe(map((r) => r.data));
+  }
 }
