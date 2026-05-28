@@ -27,7 +27,7 @@ export class DebounceService {
    * @param delayMs Debounce delay in milliseconds (default: 300ms)
    * @returns Observable that emits debounced values
    */
-  createDebouncedObservable<T>(key: string, delayMs: number = 300): {
+  createDebouncedObservable<T>(key: string, delayMs = 300): {
     input$: Subject<T>;
     output$: Observable<T>;
   } {

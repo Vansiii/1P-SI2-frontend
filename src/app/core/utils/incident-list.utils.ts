@@ -247,7 +247,7 @@ export function updateIncidentStatus<T extends Record<string, any>>(
  */
 export function batchUpsertIncidents<T extends Record<string, any>>(
   incidents: T[],
-  updates: Array<Partial<T> & { id: number }>
+  updates: (Partial<T> & { id: number })[]
 ): T[] {
   let result = incidents;
   

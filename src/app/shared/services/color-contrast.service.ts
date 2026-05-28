@@ -157,7 +157,7 @@ export class ColorContrastService {
    * @param isLargeText Whether the text is large (18pt+ or 14pt+ bold)
    * @returns Whether the combination is compliant
    */
-  isWCAGCompliant(backgroundColor: string, textColor: string, isLargeText: boolean = false): boolean {
+  isWCAGCompliant(backgroundColor: string, textColor: string, isLargeText = false): boolean {
     const ratio = this.calculateContrastRatio(backgroundColor, textColor);
     const requiredRatio = isLargeText ? 3.0 : 4.5;
     
@@ -190,7 +190,7 @@ export class ColorContrastService {
   /**
    * Get WCAG compliant timeout color
    */
-  getTimeoutColor(isWarning: boolean = false): {
+  getTimeoutColor(isWarning = false): {
     background: string;
     text: string;
     border: string;
