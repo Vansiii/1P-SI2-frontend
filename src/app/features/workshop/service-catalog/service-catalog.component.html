@@ -1,0 +1,139 @@
+<div class="catalog-container">
+  <!-- Header -->
+  <div class="catalog-header">
+    <div>
+      <h1 style="font-size:1.5rem;font-weight:700;color:#111827;margin:0 0 0.25rem 0;">Catálogo de Servicios</h1>
+      <p style="font-size:0.875rem;color:#6b7280;margin:0;">Gestiona los servicios que ofrece tu taller</p>
+    </div>
+    <button class="btn btn-primary" (click)="openCreate()">+ Agregar Servicio</button>
+  </div>
+
+  <!-- Stats & Search -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
+    <div class="stats-bar">
+      <span>Total: {{ stats().total }}</span>
+      <span>Activos: {{ stats().active }}</span>
+      <span>Inactivos: {{ stats().inactive }}</span>
+    </div>
+    <input type="text" class="search-input" placeholder="Buscar servicio..." [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" />
+  </div>
+
+  <!-- Error -->
+  @if (error()) {
+    <div class="alert alert-error">{{ error() }}</div>
+  }
+
+  <!-- Loading -->
+  @if (loading()) {
+    <div class="loading">Cargando catálogo...</div>
+  }
+
+  <!-- Empty -->
+  @if (!loading() && filteredItems().length === 0) {
+    <div class="empty-state">
+      <h3>Sin servicios en el catálogo</h3>
+      <p>Agrega tu primer servicio para que los clientes puedan encontrarte.</p>
+      <button class="btn btn-primary" style="margin-top:1rem;" (click)="openCreate()">+ Agregar primer servicio</button>
+    </div>
+  }
+
+  <!-- Grid -->
+  @if (!loading() && filteredItems().length > 0) {
+    <div class="catalog-grid">
+      @for (item of filteredItems(); track item.id) {
+        <div class="catalog-card" [class.inactive]="!item.is_active">
+          <div class="card-header">
+            <div class="card-title">{{ item.servicio_nombre }}</div>
+            <div>
+              <span class="card-badge" [class.badge-active]="item.is_active" [class.badge-inactive]="!item.is_active">
+                {{ item.is_active ? 'Activo' : 'Inactivo' }}
+              </span>
+            </div>
+          </div>
+          <div class="card-meta">
+            <span class="card-badge badge-category">{{ item.categoria_nombre }}</span>
+            <span class="card-badge badge-modalidad">{{ item.modalidad }}</span>
+            @if (item.tiempo_estimado_min) {
+              <span class="card-badge" style="background:#f0fdf4;color:#166534;">{{ item.tiempo_estimado_min }} min</span>
+            }
+            @if (item.precio) {
+              <span class="card-badge" style="background:#fef3c7;color:#92400e;">\${{ item.precio }}</span>
+            }
+          </div>
+          @if (item.descripcion) {
+            <div class="card-desc">{{ item.descripcion }}</div>
+          }
+          <div class="card-footer">
+            <button class="btn btn-toggle" (click)="toggleActive(item)" [title]="item.is_active ? 'Desactivar' : 'Activar'">
+              {{ item.is_active ? '🔵' : '⚪' }}
+            </button>
+            <button class="btn" (click)="openEdit(item)">Editar</button>
+            <button class="btn btn-danger" (click)="deleteItem(item)">Eliminar</button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>
+
+<!-- Form Dialog -->
+@if (showForm()) {
+  <div class="dialog-overlay" (click)="closeForm()">
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <h2>{{ formMode() === 'create' ? 'Agregar Servicio' : 'Editar Servicio' }}</h2>
+
+      @if (formError()) {
+        <div class="alert alert-error">{{ formError() }}</div>
+      }
+
+      <div class="form-group">
+        <label>Servicio *</label>
+        @if (formMode() === 'create') {
+          <select [ngModel]="form.servicio_id()" (ngModelChange)="form.servicio_id.set($event)">
+            <option [ngValue]="0" disabled>Selecciona un servicio</option>
+            @for (cat of categories(); track cat.id) {
+              <optgroup [label]="cat.nombre">
+                @for (svc of servicesByCategory(cat.id); track svc.id) {
+                  <option [ngValue]="svc.id">{{ svc.nombre }}</option>
+                }
+              </optgroup>
+            }
+          </select>
+        } @else {
+          <input type="text" [value]="editingItem()?.servicio_nombre || ''" disabled />
+        }
+      </div>
+
+      <div class="form-group">
+        <label>Modalidad</label>
+        <select [ngModel]="form.modalidad()" (ngModelChange)="form.modalidad.set($event)">
+          <option value="taller">En Taller</option>
+          <option value="domicilio">A Domicilio</option>
+          <option value="ambas">Ambas</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Tiempo estimado (minutos)</label>
+        <input type="number" [ngModel]="form.tiempo_estimado_min()" (ngModelChange)="form.tiempo_estimado_min.set($event)" placeholder="Ej: 60" min="1" />
+      </div>
+
+      <div class="form-group">
+        <label>Precio referencial (\$)</label>
+        <input type="number" [ngModel]="form.precio()" (ngModelChange)="form.precio.set($event)" placeholder="Ej: 150.00" min="0" step="0.01" />
+      </div>
+
+      <div class="form-group">
+        <label>Descripción específica</label>
+        <textarea [ngModel]="form.descripcion()" (ngModelChange)="form.descripcion.set($event)" placeholder="Detalles adicionales del servicio..." rows="3"></textarea>
+      </div>
+
+      <div class="dialog-footer">
+        <button class="btn" (click)="closeForm()">Cancelar</button>
+        <button class="btn btn-primary" (click)="submitForm()" [disabled]="formLoading() || (formMode() === 'create' && form.servicio_id() === 0)">
+          {{ formLoading() ? 'Guardando...' : (formMode() === 'create' ? 'Agregar' : 'Guardar') }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

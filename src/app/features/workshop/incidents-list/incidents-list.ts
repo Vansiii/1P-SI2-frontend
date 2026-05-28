@@ -1539,29 +1539,43 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
    * IncidentsService handles the event and updates incidents list reactively.
    * No client-side polling needed.
    */
-  startTimeoutChecker() {
-    this.incidentsService.incidentTimeout$
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((event: any) => {
-        const timedOutIncidentId = event.incident_id;
-        const currentAll = this.allIncidents();
-        const idx = currentAll.findIndex(i => i.id === timedOutIncidentId);
+   startTimeoutChecker() {
+     this.incidentsService.incidentTimeout$
+       .pipe(takeUntilDestroyed(this.destroyRef))
+       .subscribe((event: any) => {
+         const timedOutIncidentId = event.incident_id;
+         const assignmentMode = event.assignment_mode;
+         const currentAll = this.allIncidents();
+         const idx = currentAll.findIndex(i => i.id === timedOutIncidentId);
 
-        if (idx !== -1 && !(currentAll[idx] as any)._isTimedOut) {
-          const updated = [...currentAll];
-          updated[idx] = {
-            ...updated[idx],
-            _isTimedOut: true,
-            estado: 'sin_taller_disponible' as any,
-            estado_actual: 'sin_taller_disponible' as any,
-          };
-          this.allIncidents.set(updated);
-          this.applyCurrentFilter();
-          console.log(`Incident #${timedOutIncidentId} timed out (via WebSocket event)`);
-        }
-      });
-    console.log('Timeout checker initialized (reactive via WebSocket events)');
-  }
+         if (idx === -1) return;
+
+         // MODO MANUAL: remover incidente de la lista del taller en tiempo real
+         // (el backend ya limpió taller_id, este incidente ya no pertenece a este taller)
+         if (assignmentMode === 'manual') {
+           const updated = currentAll.filter(i => i.id !== timedOutIncidentId);
+           this.allIncidents.set(updated);
+           this.applyCurrentFilter();
+           console.log(`Incident #${timedOutIncidentId} removed from list (manual timeout)`);
+           return;
+         }
+
+         // MODO AUTO: comportamiento existente (marcar como timed out)
+         if (!(currentAll[idx] as any)._isTimedOut) {
+           const updated = [...currentAll];
+           updated[idx] = {
+             ...updated[idx],
+             _isTimedOut: true,
+             estado: 'sin_taller_disponible' as any,
+             estado_actual: 'sin_taller_disponible' as any,
+           };
+           this.allIncidents.set(updated);
+           this.applyCurrentFilter();
+           console.log(`Incident #${timedOutIncidentId} timed out (via WebSocket event)`);
+         }
+       });
+     console.log('Timeout checker initialized (reactive via WebSocket events)');
+   }
 
   /**
    * ✅ Stop timeout checker

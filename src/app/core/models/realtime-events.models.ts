@@ -186,6 +186,7 @@ export interface IncidentAssignmentTimeoutEventData {
   incident_id: number;
   workshop_id: number;
   timeout_at: string;
+  assignment_mode?: string;
 }
 
 /**

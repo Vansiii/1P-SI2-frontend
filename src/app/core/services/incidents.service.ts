@@ -817,13 +817,21 @@ export class IncidentsService {
 
     this.incidentTimeout$.next(data);
 
-    // Log for admin dashboard visibility
     console.warn(
       `⏰ Assignment attempt timed out for incident ${data.incident_id} ` +
       `(workshop: ${data.workshop_name}, id: ${data.workshop_id})`
     );
 
     try {
+      const currentUser = this.authService.currentUser();
+
+      if (data.assignment_mode === 'manual' && currentUser?.user_type === 'workshop') {
+        const incidents = this.incidentsSubject.value;
+        const filteredIncidents = incidents.filter(i => i.id !== data.incident_id);
+        this.incidentsSubject.next(filteredIncidents);
+        console.log(`🚫 Manual incident ${data.incident_id} removed from workshop list (timeout)`);
+        return;
+      }
       // Fetch the updated incident to get its current state
       // Don't just remove it - it might have been reassigned or changed state
       const updatedIncident = await this.getIncidentById(data.incident_id);
