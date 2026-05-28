@@ -146,6 +146,10 @@ export const routes: Routes = [
       {
         path: 'subscription',
         loadComponent: () => import('./features/workshop/subscription/subscription').then(m => m.SubscriptionPageComponent)
+      },
+      {
+        path: 'catalog',
+        loadComponent: () => import('./features/workshop/service-catalog/service-catalog.component').then(m => m.ServiceCatalogComponent)
       }
     ]
   },
