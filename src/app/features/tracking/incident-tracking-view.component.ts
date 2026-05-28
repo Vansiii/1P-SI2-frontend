@@ -1442,13 +1442,13 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
   // ── Mensajes con separadores de día ────────────────────────────────────
   messagesWithSeparators = computed(() => {
     const msgs = this.messages();
-    const result: Array<{
+    const result: {
       type: 'message' | 'separator';
       key: string;
       message?: Message;
       label?: string;
       isGrouped?: boolean;
-    }> = [];
+    }[] = [];
 
     for (let i = 0; i < msgs.length; i++) {
       const msg = msgs[i];

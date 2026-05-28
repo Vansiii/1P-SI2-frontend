@@ -291,7 +291,7 @@ export interface TrackingRouteUpdatedEventData {
   technician_id: number;
   estimated_arrival: string;
   distance_remaining: number;
-  route_points: Array<{ latitude: number; longitude: number }>;
+  route_points: { latitude: number; longitude: number }[];
 }
 
 /**

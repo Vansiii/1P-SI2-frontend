@@ -158,7 +158,7 @@ export class KeyboardNavigationService {
   /**
    * Create skip link for accessibility
    */
-  createSkipLink(targetId: string, text: string = 'Skip to main content'): HTMLAnchorElement {
+  createSkipLink(targetId: string, text = 'Skip to main content'): HTMLAnchorElement {
     const skipLink = document.createElement('a');
     skipLink.href = `#${targetId}`;
     skipLink.className = 'skip-link';

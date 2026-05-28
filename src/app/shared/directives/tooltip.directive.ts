@@ -41,8 +41,8 @@ export class TooltipDirective implements OnDestroy {
   // Input properties
   @Input('appTooltip') tooltipText = '';
   @Input() tooltipPosition: 'top' | 'bottom' | 'left' | 'right' = 'top';
-  @Input() tooltipDelay: number = 300;
-  @Input() tooltipDisabled: boolean = false;
+  @Input() tooltipDelay = 300;
+  @Input() tooltipDisabled = false;
 
   // State
   private tooltipElement: HTMLElement | null = null;
