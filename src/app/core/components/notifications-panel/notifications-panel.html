@@ -71,7 +71,7 @@
         class="notifications-viewport">
         <a 
           *cdkVirtualFor="let incident of incidents(); trackBy: trackByIncidentId"
-          [routerLink]="isAdmin() ? ['/admin/incident', incident.id] : ['/workshop/incidents']"
+          [routerLink]="isAdmin() ? ((incident.id && incident.id > 0) ? ['/admin/incident', incident.id] : ['/admin/monitoring']) : ['/workshop/incidents']"
           [queryParams]="isAdmin() ? {} : {incidentId: incident.id}"
           class="notification-item" 
           [class.unread]="incident.estado_actual === 'pendiente' || incident.estado_actual === 'sin_taller_disponible'"

@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal, AfterViewInit, OnDestroy, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { IncidentsService, type IncidentDetailAdmin } from '../../../core/services/incidents.service';
@@ -16,6 +16,7 @@ import * as L from 'leaflet';
 })
 export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly incidentsService = inject(IncidentsService);
   private readonly incidentRealtimeService = inject(IncidentRealtimeService);
   private readonly destroyRef = inject(DestroyRef);
@@ -144,6 +145,12 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
   }
 
   loadIncidentDetail(id: number): void {
+    if (!Number.isFinite(id) || id <= 0) {
+      this.error.set('ID de incidente inválido');
+      this.loading.set(false);
+      return;
+    }
+
     this.loading.set(true);
     this.error.set(null);
 
@@ -163,6 +170,15 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
           this.loading.set(false);
         }
       });
+  }
+
+  retryLoadIncidentDetail(): void {
+    if (this.currentIncidentId && this.currentIncidentId > 0) {
+      this.loadIncidentDetail(this.currentIncidentId);
+      return;
+    }
+
+    this.router.navigate(['/admin/monitoring']);
   }
 
   private initMap(incident: IncidentDetailAdmin): void {
@@ -290,8 +306,10 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
 
   getResponseStatusLabel(status: string): string {
     const labels: Record<string, string> = {
+      'pending': 'Pendiente',
       'accepted': 'Aceptado',
       'rejected': 'Rechazado',
+      'cancelled': 'Cancelado',
       'no_response': 'Sin Respuesta',
       'timeout': 'Tiempo Agotado'
     };
@@ -300,10 +318,14 @@ export class IncidentDetailAdminComponent implements OnInit, AfterViewInit, OnDe
 
   getResponseStatusColor(status: string): string {
     switch (status) {
+      case 'pending':
+        return '#f59e0b';
       case 'accepted':
         return '#10b981';
       case 'rejected':
         return '#ef4444';
+      case 'cancelled':
+        return '#6b7280';
       case 'no_response':
         return '#f59e0b';
       case 'timeout':

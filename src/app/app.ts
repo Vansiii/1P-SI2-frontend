@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, effect } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Router, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/services/auth.service';
 import { PushNotificationService } from './core/services/push-notification.service';
 import { PushTokenService } from './core/services/push-token.service';
@@ -7,10 +7,12 @@ import { WebSocketService } from './core/services/websocket.service';
 import { RealtimeInitService } from './core/services/realtime-init.service';
 import { ToastContainerComponent } from './shared/components/toast-container/toast-container.component';
 import { ConnectionStatusComponent } from './shared/components/connection-status';
+import { SyncStatusBannerComponent } from './shared/components/sync-status-banner/sync-status-banner.component';
+import { OfflineIndicatorComponent } from './shared/components/offline-indicator/offline-indicator.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, ToastContainerComponent, ConnectionStatusComponent],
+  imports: [RouterOutlet, ToastContainerComponent, ConnectionStatusComponent, SyncStatusBannerComponent, OfflineIndicatorComponent],
   templateUrl: './app.html',
   styleUrl: './app.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -21,6 +23,7 @@ export class App implements OnInit {
   private readonly pushTokenService = inject(PushTokenService);
   private readonly wsService = inject(WebSocketService);
   private readonly realtimeInit = inject(RealtimeInitService);
+  private readonly router = inject(Router);
   private readonly PUSH_DEVICE_ID_KEY = 'mecanicoya_web_device_id';
   private readonly PUSH_REGISTERED_KEY = 'mecanicoya_push_registered_key';
   constructor() {
@@ -144,8 +147,14 @@ export class App implements OnInit {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
-          console.log('🖱️ Notification clicked (ignored — no auto-navigation)');
+          const clickAction = event.data.clickAction;
+          console.log('🖱️ Notification clicked:', clickAction);
           window.focus();
+          if (typeof clickAction === 'string' && clickAction.startsWith('/')) {
+            this.router.navigateByUrl(clickAction).catch((error) => {
+              console.warn('Could not navigate from notification click:', error);
+            });
+          }
         }
       });
     }

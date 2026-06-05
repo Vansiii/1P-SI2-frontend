@@ -14,7 +14,11 @@ export const publicOnlyGuard: CanActivateFn = () => {
   // Si está autenticado Y tiene un usuario válido, redirigir al dashboard
   const currentUser = authService.currentUser();
   if (currentUser) {
-    return router.createUrlTree(['/dashboard']);
+    if (!authService.isWebUserTypeAllowed(currentUser.user_type)) {
+      authService.clearSessionAndRedirect();
+      return true;
+    }
+    return router.createUrlTree([authService.getDefaultRouteForCurrentUser()]);
   }
 
   // Si tiene token pero no usuario (sesión inválida), permitir acceso

@@ -457,6 +457,11 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.chatService.getMessagesObservable(this.incidentId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((messages: Message[]) => {
+        if (messages.length === 0) {
+          this.messages = [];
+          return;
+        }
+
         const previousLength = this.messages.length;
 
         const mergedById = new Map<number, Message>(
@@ -542,19 +547,8 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.stopTyping();
 
     this.chatService.sendMessage(this.incidentId, { message: text }).subscribe({
-      next: (message: Message) => {
-        const normalizedMessage: Message = {
-          ...message,
-          id: Number(message.id),
-          incident_id: Number(message.incident_id),
-          sender_id: Number(message.sender_id)
-        };
-        // 🔧 FIX: Verificar que el mensaje no exista antes de agregarlo
-        const exists = this.messages.some(m => Number(m.id) === Number(normalizedMessage.id));
-        if (!exists) {
-          this.messages = [...this.messages, normalizedMessage];
-          this.shouldScrollToBottom = true;
-        }
+      next: () => {
+        this.shouldScrollToBottom = true;
         this.isSending = false;
       },
       error: (error: any) => {

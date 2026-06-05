@@ -1623,6 +1623,50 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
     return new Date(hasTimezone ? raw : `${raw}Z`);
   }
 
+  private isOptimisticMessageMatch(localMessage: Message, serverMessage: Message): boolean {
+    if (!localMessage.message?.trim() || !serverMessage.message?.trim()) return false;
+    if (localMessage.message.trim() !== serverMessage.message.trim()) return false;
+    if (Number(localMessage.sender_id) !== Number(serverMessage.sender_id)) return false;
+    if (Number(localMessage.incident_id) !== Number(serverMessage.incident_id)) return false;
+
+    const localTime = this.parseServerDate(localMessage.created_at).getTime();
+    const serverTime = this.parseServerDate(serverMessage.created_at).getTime();
+    return Math.abs(serverTime - localTime) <= 2 * 60 * 1000;
+  }
+
+  private getMessageStatusRank(status?: Message['status']): number {
+    switch (status) {
+      case 'read':
+        return 3;
+      case 'delivered':
+        return 2;
+      case 'sent':
+        return 1;
+      case 'sending':
+        return 0;
+      case 'failed':
+        return -1;
+      default:
+        return 0;
+    }
+  }
+
+  private mergeMessageVersions(current: Message, incoming: Message): Message {
+    const currentRank = this.getMessageStatusRank(current.status);
+    const incomingRank = this.getMessageStatusRank(incoming.status);
+
+    return {
+      ...current,
+      ...incoming,
+      id: incoming.id ?? current.id,
+      localId: current.localId ?? incoming.localId,
+      created_at: incoming.created_at || current.created_at,
+      status: incomingRank >= currentRank ? incoming.status : current.status,
+      isTemporary: Boolean((incoming.isTemporary ?? current.isTemporary) && !(incoming.id ?? current.id)),
+      errorMessage: incoming.errorMessage ?? current.errorMessage,
+    };
+  }
+
   private loadIncidentData(): void {
     if (!this.incidentId) return;
 
@@ -1696,11 +1740,17 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
 
     // 1. Cargar desde localStorage cache inmediatamente
     const cacheKey = `chat_${this.incidentId}`;
+    const activeConversationIdFromService = this.chatService.getActiveConversationId(this.incidentId) ?? 0;
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const data = JSON.parse(cached);
-        if (data.messages?.length) {
+        const cachedConversationId = Number(data.conversationId ?? data.messages?.[0]?.conversation_id ?? 0);
+        if (
+          data.messages?.length &&
+          activeConversationIdFromService > 0 &&
+          cachedConversationId === activeConversationIdFromService
+        ) {
           this.messages.set(data.messages);
           this.loadingMessages.set(false);
           setTimeout(() => this.scrollToBottom(), 50);
@@ -1713,27 +1763,44 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (messages) => {
+          if (messages.length === 0) {
+            this.messages.set([]);
+            this.loadingMessages.set(false);
+            try {
+              localStorage.removeItem(cacheKey);
+            } catch {}
+            return;
+          }
+
           const sorted = [...messages].sort((a, b) =>
             this.parseServerDate(a.created_at).getTime() - this.parseServerDate(b.created_at).getTime()
           );
           const previousMessages = this.messages();
           const prevLen = previousMessages.length;
+          const activeConversationId = this.chatService.getActiveConversationId(this.incidentId ?? 0) ?? 0;
 
           const currentUserId = Number(this.currentUser()?.id ?? 0);
           const localPendingMessages = previousMessages.filter((message) =>
-            message.isTemporary ||
-            message.status === 'sending' ||
-            message.status === 'failed'
+            Number(message.conversation_id ?? activeConversationId) === activeConversationId &&
+            (
+              message.isTemporary ||
+              message.status === 'sending' ||
+              message.status === 'failed'
+            )
+          );
+          const reconciledLocalPendingMessages = localPendingMessages.filter((message) =>
+            !sorted.some((serverMessage) => this.isOptimisticMessageMatch(message, serverMessage))
           );
           const serverIds = new Set(sorted.map((message) => Number(message.id)));
           const localConfirmedOwnMessages = previousMessages.filter((message) =>
+            Number(message.conversation_id ?? activeConversationId) === activeConversationId &&
             !message.isTemporary &&
             message.status !== 'sending' &&
             message.status !== 'failed' &&
             Number(message.sender_id) === currentUserId &&
             !serverIds.has(Number(message.id))
           );
-          const localOnlyMessages = [...localPendingMessages, ...localConfirmedOwnMessages].filter(
+          const localOnlyMessages = [...reconciledLocalPendingMessages, ...localConfirmedOwnMessages].filter(
             (message, index, array) =>
               array.findIndex((entry) =>
                 Number(entry.id) === Number(message.id) ||
@@ -1750,7 +1817,11 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
 
           // Guardar en localStorage
           try {
-            localStorage.setItem(cacheKey, JSON.stringify({ messages: merged, cachedAt: Date.now() }));
+            localStorage.setItem(cacheKey, JSON.stringify({
+              conversationId: activeConversationId,
+              messages: merged,
+              cachedAt: Date.now(),
+            }));
           } catch { /* ignore */ }
 
           if (merged.length > prevLen && prevLen > 0) {
@@ -1813,6 +1884,7 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
           if (incidentId === this.incidentId && newStatus) {
             this.incident.update(inc => inc ? { ...inc, estado_actual: newStatus } : inc);
             if (reason === 'mutual_cancellation') {
+              this.chatService.clearIncidentChat(this.incidentId ?? 0);
               this.pendingCancellation.set(null);
               this.addMessage({
                 id: Date.now(),
@@ -1870,6 +1942,7 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
     }
 
     if (eventType === 'cancellation.approved' || eventType === 'cancellation_response') {
+      this.chatService.clearIncidentChat(this.incidentId);
       this.pendingCancellation.set(null);
       this.addMessage({
         id: Date.now(),
@@ -1893,6 +1966,7 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
   private addMessage(messageData: any): void {
     const newMsg: Message = {
       id: messageData.id || Date.now(),
+      conversation_id: Number(messageData.conversation_id ?? this.chatService.getActiveConversationId(this.incidentId!) ?? 0),
       incident_id: this.incidentId!,
       sender_id: Number(messageData.sender_id),
       message: messageData.message,
@@ -1967,6 +2041,7 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
     const localId = `temp_${Date.now()}_${Math.random()}`;
     const tempMessage: Message = {
       id: Date.now(),
+      conversation_id: Number(this.chatService.getActiveConversationId(this.incidentId) ?? 0),
       incident_id: this.incidentId,
       sender_id: this.currentUser()?.id ?? 0,
       sender_name: `${this.currentUser()?.first_name} ${this.currentUser()?.last_name}`,
@@ -1995,16 +2070,31 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
         const enriched: Message = {
           ...message,
           sender_name: `${this.currentUser()?.first_name} ${this.currentUser()?.last_name}`,
-          status: 'sent'
+          status: 'sent',
+          isTemporary: false
         };
         // Reemplazar temporal con real; si no existe temporal, hacer upsert del mensaje real
         this.messages.update(msgs => {
           const hasTemporary = msgs.some(m => m.localId === localId);
+          const existingServerIndex = msgs.findIndex(m => Number(m.id) === Number(enriched.id));
           if (hasTemporary) {
-            return msgs.map(m => m.localId === localId ? enriched : m);
+            if (existingServerIndex !== -1) {
+              return msgs
+                .filter(m => m.localId !== localId)
+                .map((m, index) => index === existingServerIndex
+                  ? this.mergeMessageVersions(m, enriched)
+                  : m
+                );
+            }
+            return msgs.map(m => m.localId === localId ? this.mergeMessageVersions(m, enriched) : m);
           }
-          const alreadyExists = msgs.some(m => Number(m.id) === Number(enriched.id));
-          if (alreadyExists) return msgs;
+          const alreadyExists = existingServerIndex !== -1;
+          if (alreadyExists) {
+            return msgs.map((m, index) => index === existingServerIndex
+              ? this.mergeMessageVersions(m, enriched)
+              : m
+            );
+          }
           return [...msgs, enriched].sort(
             (a, b) => this.parseServerDate(a.created_at).getTime() - this.parseServerDate(b.created_at).getTime()
           );
@@ -2039,13 +2129,27 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
 
       if (sent) {
         this.messages.update(msgs => {
-          const replacement = { ...sent, status: 'sent' as const };
+          const replacement = { ...sent, status: 'sent' as const, isTemporary: false };
           const hasTemporary = msgs.some(m => m.localId === localId);
+          const existingServerIndex = msgs.findIndex(m => Number(m.id) === Number(sent.id));
           if (hasTemporary) {
-            return msgs.map(m => m.localId === localId ? replacement : m);
+            if (existingServerIndex !== -1) {
+              return msgs
+                .filter(m => m.localId !== localId)
+                .map((m, index) => index === existingServerIndex
+                  ? this.mergeMessageVersions(m, replacement)
+                  : m
+                );
+            }
+            return msgs.map(m => m.localId === localId ? this.mergeMessageVersions(m, replacement) : m);
           }
-          const alreadyExists = msgs.some(m => Number(m.id) === Number(sent.id));
-          if (alreadyExists) return msgs;
+          const alreadyExists = existingServerIndex !== -1;
+          if (alreadyExists) {
+            return msgs.map((m, index) => index === existingServerIndex
+              ? this.mergeMessageVersions(m, replacement)
+              : m
+            );
+          }
           return [...msgs, replacement].sort(
             (a, b) => this.parseServerDate(a.created_at).getTime() - this.parseServerDate(b.created_at).getTime()
           );
@@ -2206,6 +2310,7 @@ export class IncidentTrackingViewComponent implements OnInit, OnDestroy {
   private showSuccessAnimationAndRedirect(): void {
     if (this.redirectingAfterCancellation) return;
     this.redirectingAfterCancellation = true;
+    this.chatService.clearIncidentChat(this.incidentId ?? 0);
 
     const overlay = document.createElement('div');
     overlay.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:10000;`;

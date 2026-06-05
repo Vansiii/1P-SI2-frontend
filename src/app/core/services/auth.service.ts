@@ -4,6 +4,8 @@ import { Router } from '@angular/router';
 import { catchError, map, Observable, of, switchMap, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../models/api.models';
+import { OfflineCacheService } from './offline-cache.service';
+import { OfflineQueueService } from './offline-queue.service';
 import {
   AppUserProfile,
   AuthTokenResponse,
@@ -15,6 +17,7 @@ import {
 
 const ACCESS_TOKEN_KEY = 'workshop_access_token';
 const REFRESH_TOKEN_KEY = 'workshop_refresh_token';
+const PUSH_REGISTERED_KEY = 'mecanicoya_push_registered_key';
 
 interface LoginChallengePayload {
   message?: string;
@@ -28,8 +31,11 @@ interface LoginChallengeResponse {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
+  private readonly allowedWebUserTypes = new Set(['workshop', 'admin', 'administrator']);
   private readonly httpClient = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly offlineCache = inject(OfflineCacheService);
+  private readonly offlineQueue = inject(OfflineQueueService);
   private readonly apiBaseUrl = environment.apiBaseUrl;
 
   private readonly accessTokenSignal = signal<string | null>(null);
@@ -58,6 +64,31 @@ export class AuthService {
    * Get current user (computed signal)
    */
   currentUser = computed(() => this.userSignal());
+
+  normalizeUserType(userType?: string | null): string {
+    return (userType ?? '').trim().toLowerCase();
+  }
+
+  isAdminUserType(userType?: string | null): boolean {
+    const normalized = this.normalizeUserType(userType);
+    return normalized === 'admin' || normalized === 'administrator';
+  }
+
+  isWebUserTypeAllowed(userType?: string | null): boolean {
+    return this.allowedWebUserTypes.has(this.normalizeUserType(userType));
+  }
+
+  getWebAccessDeniedMessage(): string {
+    return 'Esta plataforma web es solo para administradores y administradores de taller. Si eres cliente o técnico, usa la app móvil.';
+  }
+
+  getDefaultRouteForUser(userType?: string | null): string {
+    return this.isAdminUserType(userType) ? '/admin/monitoring' : '/workshop/incidents';
+  }
+
+  getDefaultRouteForCurrentUser(): string {
+    return this.getDefaultRouteForUser(this.userSignal()?.user_type);
+  }
 
   /**
    * Verifica si un JWT está expirado
@@ -141,10 +172,25 @@ export class AuthService {
         this.isRestoringSession.set(false);
         console.log('✅ Session restored successfully for user:', user.email);
       },
-      error: (err) => {
-        // Si falla, limpiar la sesión inválida
+      error: async (err) => {
         this.isRestoringSession.set(false);
         console.error('❌ Failed to restore session:', err);
+
+        if (!navigator.onLine) {
+          const cached = await this.offlineCache.get<AppUserProfile>('profile', 'me');
+          if (cached) {
+            console.log('📦 Restored user profile from offline cache');
+            this.userSignal.set(cached);
+            if (cached.tenant_id != null) {
+              this.tenantId.set(cached.tenant_id);
+            }
+            if (cached.tenant_status != null) {
+              this.tenantStatus.set(cached.tenant_status);
+            }
+            return;
+          }
+        }
+
         console.log('🔴 Clearing invalid session and redirecting to login');
         this.clearSessionAndRedirect();
       },
@@ -195,6 +241,9 @@ export class AuthService {
         switchMap((response) => {
           // Check if it's a 2FA challenge
           if (response.data.requires_2fa) {
+            if (!this.isWebUserTypeAllowed(response.data.user_type)) {
+              throw new Error(this.getWebAccessDeniedMessage());
+            }
             return of({
               requires_2fa: true,
               email: loginRequest.email,
@@ -204,6 +253,9 @@ export class AuthService {
 
           // Check if we have tokens in the response
           if (response.data.tokens && response.data.user) {
+            if (!this.isWebUserTypeAllowed(response.data.user.user_type)) {
+              throw new Error(this.getWebAccessDeniedMessage());
+            }
             const authResponse: AuthTokenResponse = {
               ...response.data.tokens,
               user: response.data.user,
@@ -235,6 +287,10 @@ export class AuthService {
         tap(() => console.log('📡 HTTP request sent successfully')),
         map(response => {
           console.log('✅ Received user profile from backend:', response.data);
+          if (!this.isWebUserTypeAllowed(response.data.user_type)) {
+            this.clearSession();
+            throw new Error(this.getWebAccessDeniedMessage());
+          }
           return response.data;
         }),
         tap((userProfile) => {
@@ -247,6 +303,8 @@ export class AuthService {
           if (userProfile.tenant_status != null) {
             this.tenantStatus.set(userProfile.tenant_status);
           }
+
+          void this.offlineCache.put('profile', 'me', userProfile);
         }),
         catchError((error) => {
           console.error('❌ ERROR in fetchCurrentUser:');
@@ -316,6 +374,9 @@ export class AuthService {
             ...response.data.tokens,
             user: response.data.user,
           };
+          if (!this.isWebUserTypeAllowed(authResponse.user.user_type)) {
+            throw new Error(this.getWebAccessDeniedMessage());
+          }
           this.persistSession(authResponse);
           
           // Fetch complete user profile to ensure all fields are loaded
@@ -395,14 +456,21 @@ export class AuthService {
   logout(): Observable<void> {
     if (!this.accessTokenSignal()) {
       this.clearSession();
+      localStorage.removeItem(PUSH_REGISTERED_KEY);
       this.router.navigate(['/auth']);
       return of(void 0);
     }
 
-    return this.httpClient.post<ApiResponse<{ message: string }>>(`${this.apiBaseUrl}/auth/logout`, {}).pipe(
-      catchError(() => of({ data: { message: 'Sesion cerrada localmente' }, message: 'Sesion cerrada localmente' })),
+    return this.httpClient.delete(`${this.apiBaseUrl}/push/tokens/unregister-all`).pipe(
+      catchError(() => of(null)),
+      switchMap(() =>
+        this.httpClient.post<ApiResponse<{ message: string }>>(`${this.apiBaseUrl}/auth/logout`, {}).pipe(
+          catchError(() => of({ data: { message: 'Sesion cerrada localmente' }, message: 'Sesion cerrada localmente' }))
+        )
+      ),
       tap(() => {
         this.clearSession();
+        localStorage.removeItem(PUSH_REGISTERED_KEY);
         this.router.navigate(['/auth']);
       }),
       map(() => void 0),
@@ -451,7 +519,13 @@ export class AuthService {
     this.accessTokenSignal.set(null);
     this.refreshTokenSignal.set(null);
     this.userSignal.set(null);
+    this.tenantStatus.set(null);
+    this.tenantId.set(null);
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem('last_event_timestamp');
+
+    void this.offlineQueue.clear();
+    void this.offlineCache.clearAll();
   }
 }

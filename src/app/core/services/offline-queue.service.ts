@@ -1,305 +1,232 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { ConnectivityService } from './connectivity.service';
+import { SyncStatusService } from './sync-status.service';
 
 export interface QueueOperation {
   id: string;
+  client_operation_id: string;
   type: string;
   endpoint: string;
   method: string;
-  body: Record<string, any>;
+  body: Record<string, unknown>;
   timestamp: number;
   retries: number;
 }
 
 export interface SyncResult {
-  id: string;
+  client_operation_id: string;
+  id?: string;
+  status: string;
   success: boolean;
   status_code?: number;
   error?: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
+  conflict_code?: string;
+  message?: string;
+  retryable?: boolean;
+  server_entity_id?: number;
 }
 
 export interface SyncResponse {
   total: number;
   successful: number;
   failed: number;
+  conflicts?: number;
   results: SyncResult[];
 }
 
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class OfflineQueueService {
   private readonly http = inject(HttpClient);
+  private readonly connectivity = inject(ConnectivityService);
+  private readonly syncStatus = inject(SyncStatusService);
+
   private readonly STORAGE_KEY = 'offline_queue';
-  private readonly MAX_QUEUE_SIZE = 50;
+  private readonly MAX_QUEUE = 50;
   private readonly MAX_AGE_DAYS = 7;
   private isProcessing = false;
 
+  readonly queueSize = signal(0);
+
+  private _connectSub: any;
+
   constructor() {
-    // Listen for online/offline events
-    window.addEventListener('online', () => this.onOnline());
-    window.addEventListener('offline', () => this.onOffline());
-
-    // Process queue on startup if online
-    if (navigator.onLine) {
-      this.processQueue();
-    }
-  }
-
-  /**
-   * Add operation to offline queue
-   */
-  async add(operation: Omit<QueueOperation, 'id' | 'timestamp' | 'retries'>): Promise<void> {
-    const queue = await this.getQueue();
-
-    // Check queue size limit
-    if (queue.length >= this.MAX_QUEUE_SIZE) {
-      console.warn('⚠️ Offline queue is full, removing oldest operation');
-      queue.shift();
-    }
-
-    // Create full operation
-    const fullOperation: QueueOperation = {
-      ...operation,
-      id: this.generateId(),
-      timestamp: Date.now(),
-      retries: 0
-    };
-
-    queue.push(fullOperation);
-    await this.saveQueue(queue);
-
-    console.log('✅ Operation added to offline queue:', fullOperation.type);
-  }
-
-  /**
-   * Get all queued operations
-   */
-  async getQueue(): Promise<QueueOperation[]> {
-    try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
-      if (!stored) {
-        return [];
+    this._connectSub = this.connectivity.onlineChange$.subscribe((online) => {
+      if (online) {
+        this.isProcessing = false;
+        void this.processQueue();
       }
+    });
 
-      const queue: QueueOperation[] = JSON.parse(stored);
+    window.addEventListener('online', () => {
+      this.isProcessing = false;
+      void this.processQueue();
+    });
 
-      // Filter out expired operations
-      const maxAge = Date.now() - (this.MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
-      return queue.filter(op => op.timestamp > maxAge);
-    } catch (error) {
-      console.error('❌ Error reading offline queue:', error);
-      return [];
+    void this._refreshSize();
+    setTimeout(() => { if (navigator.onLine) void this.processQueue(); }, 500);
+  }
+
+  async add(
+    operation: Omit<QueueOperation, 'id' | 'client_operation_id' | 'timestamp' | 'retries'>
+  ): Promise<string> {
+    const queue = await this._load();
+    if (queue.length >= this.MAX_QUEUE) queue.shift();
+
+    const op: QueueOperation = {
+      ...operation,
+      id: this._generateId(),
+      client_operation_id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      retries: 0,
+    };
+    queue.push(op);
+
+    const ok = this._save(queue);
+    if (ok) {
+      this.syncStatus.setPending(queue.length);
+      this.queueSize.set(queue.length);
+      console.log(`[OfflineQueue] Queued: ${operation.type} (${queue.length}/${this.MAX_QUEUE})`);
+    } else {
+      console.error('[OfflineQueue] FAILED to save operation — storage may be full');
     }
+    return op.client_operation_id;
   }
 
-  /**
-   * Save queue to storage
-   */
-  private async saveQueue(queue: QueueOperation[]): Promise<void> {
-    try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(queue));
-    } catch (error) {
-      console.error('❌ Error saving offline queue:', error);
-    }
+  async getQueue(): Promise<QueueOperation[]> {
+    return this._load();
   }
 
-  /**
-   * Remove operation from queue
-   */
-  async remove(operationId: string): Promise<void> {
-    const queue = await this.getQueue();
-    const filtered = queue.filter(op => op.id !== operationId);
-    await this.saveQueue(filtered);
-  }
-
-  /**
-   * Clear entire queue
-   */
   async clear(): Promise<void> {
-    localStorage.removeItem(this.STORAGE_KEY);
-    console.log('🗑️ Offline queue cleared');
+    try { localStorage.removeItem(this.STORAGE_KEY); } catch { /* ignore */ }
+    this.queueSize.set(0);
+    this.syncStatus.setPending(0);
   }
 
-  /**
-   * Get queue size
-   */
-  async size(): Promise<number> {
-    const queue = await this.getQueue();
-    return queue.length;
-  }
-
-  /**
-   * Process queue when coming online
-   */
   async processQueue(): Promise<void> {
     if (this.isProcessing) {
-      console.log('⏳ Queue processing already in progress');
+      console.log('[OfflineQueue] Already processing, skipping');
+      return;
+    }
+    if (!this.connectivity.online) {
+      console.log('[OfflineQueue] Offline, skipping');
       return;
     }
 
-    if (!navigator.onLine) {
-      console.log('📴 Offline, skipping queue processing');
-      return;
-    }
-
-    const queue = await this.getQueue();
+    const queue = await this._load();
     if (queue.length === 0) {
-      console.log('✅ Offline queue is empty');
+      this.queueSize.set(0);
+      this.syncStatus.setPending(0);
       return;
     }
 
     this.isProcessing = true;
-    console.log(`🔄 Processing offline queue: ${queue.length} operations`);
+    this.syncStatus.setSyncing(true);
+    console.log(`[OfflineQueue] Processing ${queue.length} operations...`);
 
     try {
-      // Send batch to backend
       const response = await firstValueFrom(
         this.http.post<SyncResponse>(`${environment.apiUrl}/sync/batch`, {
-          operations: queue
+          client_request_id: crypto.randomUUID(),
+          app_platform: 'web',
+          app_version: environment.appVersion,
+          operations: queue.map((op) => ({
+            id: op.id,
+            client_operation_id: op.client_operation_id,
+            type: op.type,
+            endpoint: op.endpoint,
+            method: op.method,
+            body: op.body,
+            timestamp: op.timestamp,
+            retries: op.retries,
+          })),
         })
       );
 
-      console.log(
-        `✅ Batch sync completed: ${response.successful} successful, ${response.failed} failed`
+      console.log(`[OfflineQueue] Server response: ok=${response.successful} fail=${response.failed} conflicts=${response.conflicts ?? 0}`);
+
+      const failedIds = new Set(
+        response.results
+          .filter((r) => !r.success && r.retryable !== false)
+          .map((r) => r.client_operation_id)
       );
 
-      // Remove successful operations from queue
-      const failedIds = response.results
-        .filter(r => !r.success)
-        .map(r => r.id);
-
-      if (failedIds.length > 0) {
-        // Keep only failed operations and increment retries
-        const updatedQueue = queue
-          .filter(op => failedIds.includes(op.id))
-          .map(op => ({ ...op, retries: op.retries + 1 }));
-
-        await this.saveQueue(updatedQueue);
-
-        // Show notification for failed operations
-        this.showNotification(
-          '⚠️ Algunas operaciones no se pudieron sincronizar',
-          `${failedIds.length} operaciones fallaron. Se reintentarán automáticamente.`
-        );
-      } else {
-        // All successful, clear queue
-        await this.clear();
-        this.showNotification(
-          '✅ Sincronización completa',
-          `${response.successful} operaciones sincronizadas exitosamente.`
-        );
+      const discarded = response.results.filter((r) => !r.success && r.retryable === false);
+      if (discarded.length > 0) {
+        console.log(`[OfflineQueue] Discarding ${discarded.length} non-retryable operations:`,
+          discarded.map((r) => ({ id: r.client_operation_id, code: r.conflict_code, msg: r.message })));
       }
 
-    } catch (error) {
-      console.error('❌ Error processing offline queue:', error);
+      const remaining = queue
+        .filter((op) => failedIds.has(op.client_operation_id))
+        .map((op) => ({ ...op, retries: op.retries + 1 }));
 
-      // Increment retries for all operations
-      const updatedQueue = queue.map(op => ({ ...op, retries: op.retries + 1 }));
-      await this.saveQueue(updatedQueue);
+      this._save(remaining);
+      this.queueSize.set(remaining.length);
+      this.syncStatus.setPending(remaining.length);
+      this.syncStatus.setSyncComplete(response.successful);
 
-      this.showNotification(
-        '❌ Error de sincronización',
-        'No se pudo sincronizar. Se reintentará automáticamente.'
-      );
+      const conflictCount = response.conflicts ?? response.results.filter(
+        (r) => r.conflict_code != null
+      ).length;
+      if (conflictCount > 0) {
+        this.syncStatus.setConflictDetected(conflictCount);
+      }
+    } catch (err) {
+      console.error('[OfflineQueue] Batch request failed:', err);
+      const retried = queue.map((op) => ({ ...op, retries: op.retries + 1 }));
+      this._save(retried);
+      this.syncStatus.setSyncFailed('No se pudo sincronizar. Se reintentara al recuperar conexion.');
     } finally {
       this.isProcessing = false;
+      this.queueSize.set((await this._load()).length);
     }
   }
 
-  /**
-   * Handle online event
-   */
-  private onOnline(): void {
-    console.log('🌐 Connection restored, processing queue...');
-    this.showNotification('🌐 Conexión restaurada', 'Sincronizando operaciones pendientes...');
-    this.processQueue();
-  }
-
-  /**
-   * Handle offline event
-   */
-  private onOffline(): void {
-    console.log('📴 Connection lost, operations will be queued');
-    this.showNotification('📴 Sin conexión', 'Las operaciones se guardarán y sincronizarán automáticamente.');
-  }
-
-  /**
-   * Check if currently online
-   */
   isOnline(): boolean {
-    return navigator.onLine;
+    return this.connectivity.online;
   }
 
-  /**
-   * Generate unique ID
-   */
-  private generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-  }
+  // ── helpers ──
 
-  /**
-   * Show browser notification
-   */
-  private showNotification(title: string, body: string): void {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, {
-        body,
-        icon: '/logo.png',
-        badge: '/logo.png'
-      });
+  private async _load(): Promise<QueueOperation[]> {
+    try {
+      const raw = localStorage.getItem(this.STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        console.warn('[OfflineQueue] Corrupt data, resetting');
+        localStorage.removeItem(this.STORAGE_KEY);
+        return [];
+      }
+      const maxAge = Date.now() - this.MAX_AGE_DAYS * 86400000;
+      return (parsed as QueueOperation[]).filter((op) => op.timestamp > maxAge);
+    } catch (err) {
+      console.error('[OfflineQueue] Load error, resetting:', err);
+      try { localStorage.removeItem(this.STORAGE_KEY); } catch { /* ignore */ }
+      return [];
     }
   }
 
-  /**
-   * Queue operation helpers for common actions
-   */
-
-  async queueIncidentStatusUpdate(incidentId: number, estado: string, notes?: string): Promise<void> {
-    await this.add({
-      type: 'UPDATE_INCIDENT_STATUS',
-      endpoint: `/api/v1/incident-states/${incidentId}/transition`,
-      method: 'POST',
-      body: { incident_id: incidentId, estado, notes }
-    });
+  private _save(queue: QueueOperation[]): boolean {
+    try {
+      const json = JSON.stringify(queue);
+      localStorage.setItem(this.STORAGE_KEY, json);
+      return true;
+    } catch (err) {
+      console.error('[OfflineQueue] Save failed (quota/storage error):', err);
+      return false;
+    }
   }
 
-  async queueChatMessage(incidentId: number, message: string, messageType = 'text'): Promise<void> {
-    await this.add({
-      type: 'SEND_CHAT_MESSAGE',
-      endpoint: `/api/v1/chat/incidents/${incidentId}/messages`,
-      method: 'POST',
-      body: { incident_id: incidentId, message, message_type: messageType }
-    });
+  private async _refreshSize(): Promise<void> {
+    this.queueSize.set((await this._load()).length);
   }
 
-  async queueLocationUpdate(latitude: number, longitude: number, accuracy?: number): Promise<void> {
-    await this.add({
-      type: 'UPDATE_LOCATION',
-      endpoint: `/api/v1/real-time/location`,
-      method: 'POST',
-      body: { latitude, longitude, accuracy }
-    });
-  }
-
-  async queueTechnicianAssignment(incidentId: number, technicianId: number): Promise<void> {
-    await this.add({
-      type: 'ASSIGN_TECHNICIAN',
-      endpoint: `/api/v1/real-time/assign`,
-      method: 'POST',
-      body: { incident_id: incidentId, technician_id: technicianId }
-    });
-  }
-
-  async queueMarkArrived(incidentId: number): Promise<void> {
-    await this.add({
-      type: 'MARK_ARRIVED',
-      endpoint: `/api/v1/real-time/arrived`,
-      method: 'POST',
-      body: { incident_id: incidentId }
-    });
+  private _generateId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 }

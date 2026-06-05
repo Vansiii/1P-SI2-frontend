@@ -2,6 +2,7 @@ export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
 
 export interface Message {
   id: number;
+  conversation_id: number;
   incident_id: number;
   sender_id: number;
   sender_name?: string;
@@ -24,6 +25,8 @@ export interface Conversation {
   incident_id: number;
   client_id: number;
   workshop_id?: number;
+  unread_count_client?: number;
+  unread_count_workshop?: number;
   workshop_name?: string;
   client_name?: string;
   last_message?: string;

@@ -121,6 +121,8 @@ export interface WorkshopsByStatus {
 export interface WorkshopWithStatus {
   id: number;
   workshop_name: string;
+  is_active?: boolean;
+  is_available?: boolean;
   is_verified: boolean;
   address: string;
   coverage_radius_km: number;
