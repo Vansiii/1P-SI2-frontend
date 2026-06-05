@@ -37,7 +37,24 @@ export const authGuard: CanActivateFn = (route: ActivatedRouteSnapshot) => {
   }
 
   const payload = parseJwtPayload(token!);
-  if (payload.user_type !== 'workshop') {
+  const userType = authService.normalizeUserType(payload.user_type ?? authService.currentUser()?.user_type);
+
+  if (!authService.isWebUserTypeAllowed(userType)) {
+    authService.clearSessionAndRedirect();
+    return router.createUrlTree(['/auth']);
+  }
+
+  const routePaths = route.pathFromRoot
+    .map(snapshot => snapshot.routeConfig?.path)
+    .filter((path): path is string => Boolean(path));
+
+  if (routePaths.includes('admin') && !authService.isAdminUserType(userType))
+    return router.createUrlTree([authService.getDefaultRouteForUser(userType)]);
+
+  if (routePaths.includes('workshop') && userType !== 'workshop')
+    return router.createUrlTree([authService.getDefaultRouteForUser(userType)]);
+
+  if (userType !== 'workshop') {
     return true;
   }
 
@@ -60,6 +77,10 @@ export const authGuard: CanActivateFn = (route: ActivatedRouteSnapshot) => {
     return true;
   }
 
+  if (!navigator.onLine) {
+    return true;
+  }
+
   return authService.fetchCurrentUser().pipe(
     map(() => {
       const freshStatus = authService.tenantStatus();
@@ -69,6 +90,9 @@ export const authGuard: CanActivateFn = (route: ActivatedRouteSnapshot) => {
       return router.createUrlTree(['/account-pending']);
     }),
     catchError(() => {
+      if (!navigator.onLine) {
+        return of(true);
+      }
       return of(router.createUrlTree(['/account-pending']));
     })
   );

@@ -5,6 +5,7 @@ import { tap } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
 import { Message, MessageStatus, Conversation, SendMessageRequest } from '../models/chat.model';
 import { WebSocketService } from './websocket.service';
+import { AuthService } from './auth.service';
 
 @Injectable({
   providedIn: 'root'
@@ -12,12 +13,14 @@ import { WebSocketService } from './websocket.service';
 export class ChatService {
   private readonly http = inject(HttpClient);
   private readonly wsService = inject(WebSocketService);
+  private readonly authService = inject(AuthService);
   private readonly apiUrl = `${environment.apiUrl}/chat`;
 
   private newMessageSubject = new Subject<Message>();
   public newMessage$ = this.newMessageSubject.asObservable();
 
   private messagesCache = new Map<number, BehaviorSubject<Message[]>>();
+  private activeConversationIds = new Map<number, number>();
 
   private unreadCountSubject = new BehaviorSubject<Map<number, number>>(new Map());
   public unreadCount$ = this.unreadCountSubject.asObservable();
@@ -57,8 +60,38 @@ export class ChatService {
         case 'message_read':
           this.handleMessageRead(message.data);
           break;
+        case 'incident.status_changed':
+        case 'incident_status_change':
+        case 'incident_status_changed':
+          this.handleIncidentStatusChanged(message.data);
+          break;
+        case 'incident.assignment_accepted':
+        case 'incident_assignment_accepted':
+          this.handleAssignmentAccepted(message.data);
+          break;
       }
     });
+  }
+
+  private handleAssignmentAccepted(data: any): void {
+    const incidentId = this.toNumber(data?.incident_id);
+    const conversationId = this.toNumber(data?.conversation_id);
+    if (!incidentId || !conversationId) return;
+    this.setActiveConversation(incidentId, conversationId);
+  }
+
+  private handleIncidentStatusChanged(data: any): void {
+    const incidentId = this.toNumber(data?.incident_id);
+    const newStatus = String(data?.new_status ?? data?.estado_actual ?? '').trim().toLowerCase();
+    const reason = String(data?.reason ?? '').trim().toLowerCase();
+    if (!incidentId) return;
+
+    if (
+      newStatus === 'pendiente' &&
+      ['mutual_cancellation', 'ambiguous_case_cancelled', 'ambiguous_case_cancelled_manual'].includes(reason)
+    ) {
+      this.clearIncidentChat(incidentId);
+    }
   }
 
   public sendTypingStart(incidentId: number): void {
@@ -83,6 +116,9 @@ export class ChatService {
       const userId = this.toNumber(data?.user_id);
       const rawName = typeof data?.user_name === 'string' ? data.user_name.trim() : '';
       if (!incidentId) return;
+
+      const ownId = this.authService.currentUser()?.id;
+      if (ownId != null && userId === ownId) return;
 
       const userName = rawName || this.resolveUserName(incidentId, userId) || (userId !== null ? `Usuario ${userId}` : null);
       if (!userName) return;
@@ -236,6 +272,14 @@ export class ChatService {
   }
 
   private processNewMessage(message: Message): void {
+    const activeConversationId = this.activeConversationIds.get(message.incident_id);
+    if (message.conversation_id && activeConversationId && activeConversationId !== message.conversation_id) {
+      this.clearIncidentChat(message.incident_id);
+    }
+    if (message.conversation_id) {
+      this.activeConversationIds.set(message.incident_id, message.conversation_id);
+    }
+
     this.newMessageSubject.next(message);
 
     let messagesSubject = this.messagesCache.get(message.incident_id);
@@ -254,9 +298,7 @@ export class ChatService {
           index === existingIndex ? { ...m, ...message } : m
         ));
 
-    const updatedMessages = [...mergedMessages].sort(
-      (a, b) => this.toDate(a.created_at).getTime() - this.toDate(b.created_at).getTime()
-    );
+    const updatedMessages = this.dedupeMessages(mergedMessages);
 
     messagesSubject.next(updatedMessages);
 
@@ -274,18 +316,27 @@ export class ChatService {
   }
 
   private loadMessagesForIncident(incidentId: number): void {
-    this.getMessages(incidentId).subscribe({
-      next: (messages) => {
-        const messagesSubject = this.messagesCache.get(incidentId);
-        if (!messagesSubject) return;
+    this.getIncidentConversation(incidentId).subscribe({
+      next: (conversation) => {
+        this.setActiveConversation(incidentId, Number(conversation?.id));
+        this.getMessages(incidentId).subscribe({
+          next: (messages) => {
+            const messagesSubject = this.messagesCache.get(incidentId);
+            if (!messagesSubject) return;
 
-        const normalized = messages
-          .map((message) => this.normalizeMessage(message))
-          .filter((message): message is Message => !!message);
-        messagesSubject.next(normalized);
+            const normalized = messages
+              .map((message) => this.normalizeMessage(message))
+              .filter((message): message is Message => !!message)
+              .filter((message) => !conversation.id || message.conversation_id === conversation.id);
+            messagesSubject.next(this.dedupeMessages(normalized));
+          },
+          error: (error) => {
+            console.error(`Error loading messages for incident ${incidentId}:`, error);
+          }
+        });
       },
-      error: (error) => {
-        console.error(`Error loading messages for incident ${incidentId}:`, error);
+      error: () => {
+        this.clearIncidentChat(incidentId);
       }
     });
   }
@@ -304,7 +355,9 @@ export class ChatService {
   }
 
   getIncidentConversation(incidentId: number): Observable<Conversation> {
-    return this.http.get<Conversation>(`${this.apiUrl}/incidents/${incidentId}/conversation`);
+    return this.http.get<Conversation>(`${this.apiUrl}/incidents/${incidentId}/conversation`).pipe(
+      tap((conversation) => this.setActiveConversation(incidentId, Number(conversation?.id)))
+    );
   }
 
   getMessages(
@@ -385,6 +438,7 @@ export class ChatService {
 
     return {
       id,
+      conversation_id: this.toNumber(data.conversation_id) ?? 0,
       incident_id: incidentId,
       sender_id: senderId,
       sender_name: data.sender_name,
@@ -452,10 +506,92 @@ export class ChatService {
           index === existingIndex ? { ...m, ...message } : m
         ));
 
-    const sorted = [...mergedMessages].sort(
+    const sorted = this.dedupeMessages(mergedMessages);
+
+    messagesSubject.next(sorted);
+  }
+
+  private dedupeMessages(messages: Message[]): Message[] {
+    const sorted = [...messages].sort(
       (a, b) => this.toDate(a.created_at).getTime() - this.toDate(b.created_at).getTime()
     );
 
-    messagesSubject.next(sorted);
+    const deduped: Message[] = [];
+
+    for (const message of sorted) {
+      const byIdIndex = deduped.findIndex(
+        (entry) => Number(entry.id) === Number(message.id)
+      );
+
+      if (byIdIndex !== -1) {
+        deduped[byIdIndex] = { ...deduped[byIdIndex], ...message };
+        continue;
+      }
+
+      const lastMessage = deduped[deduped.length - 1];
+      if (lastMessage && this.isDuplicateSystemMessage(lastMessage, message)) {
+        deduped[deduped.length - 1] = { ...lastMessage, ...message };
+        continue;
+      }
+
+      deduped.push(message);
+    }
+
+    return deduped;
+  }
+
+  private isDuplicateSystemMessage(previous: Message, incoming: Message): boolean {
+    if (previous.message_type !== 'system' || incoming.message_type !== 'system') {
+      return false;
+    }
+
+    if (
+      previous.conversation_id !== incoming.conversation_id ||
+      previous.incident_id !== incoming.incident_id ||
+      previous.sender_id !== incoming.sender_id
+    ) {
+      return false;
+    }
+
+    const previousText = previous.message.trim();
+    const incomingText = incoming.message.trim();
+    if (!previousText || previousText !== incomingText) {
+      return false;
+    }
+
+    const previousTime = this.toDate(previous.created_at).getTime();
+    const incomingTime = this.toDate(incoming.created_at).getTime();
+    return Math.abs(incomingTime - previousTime) <= 2 * 60 * 1000;
+  }
+
+  getActiveConversationId(incidentId: number): number | null {
+    return this.activeConversationIds.get(incidentId) ?? null;
+  }
+
+  clearIncidentChat(
+    incidentId: number,
+    options: { emitEmpty?: boolean } = {}
+  ): void {
+    const subject = this.messagesCache.get(incidentId);
+    if (options.emitEmpty !== false && subject) {
+      subject.next([]);
+    }
+    this.activeConversationIds.delete(incidentId);
+    try {
+      localStorage.removeItem(`chat_${incidentId}`);
+    } catch {}
+  }
+
+  private setActiveConversation(incidentId: number, conversationId: number | null): void {
+    if (!conversationId || !Number.isFinite(conversationId) || conversationId <= 0) {
+      return;
+    }
+
+    const previousConversationId = this.activeConversationIds.get(incidentId);
+    if (previousConversationId && previousConversationId !== conversationId) {
+      this.clearIncidentChat(incidentId);
+    }
+
+    this.activeConversationIds.set(incidentId, conversationId);
   }
 }

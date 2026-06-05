@@ -123,19 +123,23 @@ export class WorkshopMapPageComponent implements OnInit, OnDestroy {
         ...(responses[2]?.data || []),
         ...(responses[3]?.data || [])
       ];
-      const incidents = raw.map(r => ({
-        id: r.id,
-        descripcion: r.descripcion,
-        estado_actual: r.estado_actual,
-        prioridad_ia: r.prioridad_ia,
-        categoria_ia: r.categoria_ia,
-        latitude: r.latitude,
-        longitude: r.longitude,
-        direccion_referencia: r.direccion_referencia,
-        created_at: r.created_at,
-        technician: r.technician,
-        workshop: r.workshop
-      }));
+      const incidents = Array.from(
+        new Map(
+          raw.map(r => [r.id, {
+            id: r.id,
+            descripcion: r.descripcion,
+            estado_actual: r.estado_actual,
+            prioridad_ia: r.prioridad_ia,
+            categoria_ia: r.categoria_ia,
+            latitude: r.latitude,
+            longitude: r.longitude,
+            direccion_referencia: r.direccion_referencia,
+            created_at: r.created_at,
+            technician: r.technician,
+            workshop: r.workshop
+          }])
+        ).values()
+      );
       this.incidents.set(incidents);
       this.applyFilter();
       this.loading.set(false);

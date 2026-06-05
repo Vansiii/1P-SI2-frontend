@@ -82,6 +82,10 @@ export class AdminRealtimeService {
       'incident_assignment_accepted',
       'incident.assignment_rejected',
       'incident_assignment_rejected',
+      'incident.assignment_timeout',
+      'incident_assignment_timeout',
+      'incident.reassigned',
+      'incident_reassigned',
       'incident.technician_on_way',
       'incident_technician_on_way',
       'incident.technician_arrived',
@@ -94,6 +98,8 @@ export class AdminRealtimeService {
       'incident_cancelled',
       'incident.no_workshop_available',
       'incident_no_workshop_available',
+      'cancellation.approved',
+      'cancellation_approved',
       'payment.received',
       'wallet.balance_updated',
       'workshop.balance_updated',
@@ -118,6 +124,17 @@ export class AdminRealtimeService {
     const payload = anyEvent.data ?? anyEvent;
     const incidentId = Number(payload?.incident_id);
     const hasIncidentId = Number.isFinite(incidentId) && incidentId > 0;
+    const eventTimestamp =
+      payload?.updated_at ||
+      payload?.changed_at ||
+      payload?.timestamp ||
+      payload?.approved_at ||
+      payload?.accepted_at ||
+      payload?.rejected_at ||
+      payload?.timed_out_at ||
+      payload?.cancelled_at ||
+      event.timestamp ||
+      new Date().toISOString();
 
     switch (eventType) {
       // ── Dashboard events ──
@@ -139,11 +156,13 @@ export class AdminRealtimeService {
       case 'workshop.availability_changed':
         if (payload?.workshop_id) {
           this.adminMonitoringService.updateWorkshopFromEvent(payload.workshop_id, {
-            availability_status: payload.new_status,
+            ...(payload?.new_status ? { availability_status: payload.new_status } : {}),
+            is_available: payload.is_available,
+            is_verified: payload.is_verified,
             available_technicians: payload.available_technicians,
             busy_technicians: payload.busy_technicians,
             active_incidents: payload.active_incidents,
-            updated_at: payload.changed_at
+            updated_at: payload.changed_at || payload.timestamp || new Date().toISOString()
           });
           this.workshopUpdates$.next({
             type: 'availability_changed',
@@ -155,11 +174,25 @@ export class AdminRealtimeService {
         }
         break;
       case 'workshop.verified':
+        if (payload?.workshop_id) {
+          this.adminMonitoringService.updateWorkshopFromEvent(payload.workshop_id, {
+            is_verified: payload.is_verified,
+            is_available: payload.is_available,
+            updated_at: payload.changed_at || payload.timestamp || new Date().toISOString()
+          });
+        }
         this.workshopUpdates$.next({ type: 'verified', workshop_id: payload.workshop_id, payload });
         this.scheduleWorkshopsRefresh();
         this.scheduleChartsRefresh();
         break;
       case 'workshop.updated':
+        if (payload?.workshop_id) {
+          this.adminMonitoringService.updateWorkshopFromEvent(payload.workshop_id, {
+            is_verified: payload.is_verified,
+            is_available: payload.is_available,
+            updated_at: payload.changed_at || payload.timestamp || new Date().toISOString()
+          });
+        }
         this.workshopUpdates$.next({ type: 'status_changed', workshop_id: payload.workshop_id, payload });
         this.scheduleWorkshopsRefresh();
         this.scheduleChartsRefresh();
@@ -207,7 +240,8 @@ export class AdminRealtimeService {
           this.adminMonitoringService.updateIncidentStatusFromEvent(
             incidentId,
             payload?.new_status || payload?.estado_actual || 'pendiente',
-            payload?.old_status || payload?.estado_anterior
+            payload?.old_status || payload?.estado_anterior,
+            eventTimestamp
           );
           this.scheduleMetricsRefresh();
           this.scheduleWorkshopsRefresh();
@@ -223,7 +257,8 @@ export class AdminRealtimeService {
             this.adminMonitoringService.updateIncidentStatusFromEvent(
               incidentId,
               rawNewStatus,
-              payload?.old_status || payload?.estado_anterior
+              payload?.old_status || payload?.estado_anterior,
+              eventTimestamp
             );
             this.scheduleMetricsRefresh();
             this.scheduleWorkshopsRefresh();
@@ -243,8 +278,8 @@ export class AdminRealtimeService {
           this.adminMonitoringService.updateIncidentFromEvent(incidentId, {
             taller_id: payload?.workshop_id ?? payload?.taller_id ?? null,
             ...(statusFromEvent ? { estado_actual: statusFromEvent } : {}),
-            updated_at: payload?.timestamp || new Date().toISOString()
-          });
+            updated_at: eventTimestamp
+          }, eventTimestamp);
         }
         break;
       case 'incident.assignment_accepted':
@@ -259,7 +294,8 @@ export class AdminRealtimeService {
           this.adminMonitoringService.updateIncidentStatusFromEvent(
             incidentId,
             statusFromEvent,
-            payload?.old_status || payload?.estado_anterior || 'pendiente'
+            payload?.old_status || payload?.estado_anterior || 'pendiente',
+            eventTimestamp
           );
           this.scheduleMetricsRefresh();
           this.scheduleWorkshopsRefresh();
@@ -269,17 +305,57 @@ export class AdminRealtimeService {
       case 'incident.assignment_rejected':
       case 'incident_assignment_rejected':
         if (hasIncidentId) {
-          const statusFromEvent = this.extractIncidentStatus(payload);
+          const statusFromEvent =
+            this.extractIncidentStatus(payload) ||
+            ((payload?.assignment_mode || payload?.assignmentMode) === 'manual'
+              ? 'pendiente'
+              : undefined);
           if (statusFromEvent) {
             this.adminMonitoringService.updateIncidentStatusFromEvent(
               incidentId,
               statusFromEvent,
-              payload?.old_status || payload?.estado_anterior
+              payload?.old_status || payload?.estado_anterior,
+              eventTimestamp
             );
             this.scheduleMetricsRefresh();
             this.scheduleWorkshopsRefresh();
             this.scheduleChartsRefresh();
           }
+        }
+        break;
+      case 'incident.assignment_timeout':
+      case 'incident_assignment_timeout':
+        if (hasIncidentId) {
+          const statusFromEvent =
+            this.extractIncidentStatus(payload) ||
+            ((payload?.assignment_mode || payload?.assignmentMode) === 'manual'
+              ? 'pendiente'
+              : undefined);
+          if (statusFromEvent) {
+            this.adminMonitoringService.updateIncidentStatusFromEvent(
+              incidentId,
+              statusFromEvent,
+              payload?.old_status || payload?.estado_anterior,
+              eventTimestamp
+            );
+            this.scheduleMetricsRefresh();
+            this.scheduleWorkshopsRefresh();
+            this.scheduleChartsRefresh();
+          }
+        }
+        break;
+      case 'incident.reassigned':
+      case 'incident_reassigned':
+        if (hasIncidentId) {
+          const statusFromEvent = this.extractIncidentStatus(payload) || 'pendiente';
+          this.adminMonitoringService.updateIncidentFromEvent(incidentId, {
+            taller_id: payload?.new_workshop_id ?? payload?.workshop_id ?? null,
+            estado_actual: statusFromEvent,
+            updated_at: eventTimestamp
+          }, eventTimestamp);
+          this.scheduleMetricsRefresh();
+          this.scheduleWorkshopsRefresh();
+          this.scheduleChartsRefresh();
         }
         break;
       case 'incident.technician_on_way':
@@ -288,7 +364,8 @@ export class AdminRealtimeService {
           this.adminMonitoringService.updateIncidentStatusFromEvent(
             incidentId,
             payload?.new_status || payload?.estado_actual || 'en_camino',
-            payload?.old_status || payload?.estado_anterior
+            payload?.old_status || payload?.estado_anterior,
+            eventTimestamp
           );
           this.scheduleMetricsRefresh();
           this.scheduleWorkshopsRefresh();
@@ -303,7 +380,8 @@ export class AdminRealtimeService {
           this.adminMonitoringService.updateIncidentStatusFromEvent(
             incidentId,
             payload?.new_status || payload?.estado_actual || 'en_proceso',
-            payload?.old_status || payload?.estado_anterior
+            payload?.old_status || payload?.estado_anterior,
+            eventTimestamp
           );
           this.scheduleMetricsRefresh();
           this.scheduleWorkshopsRefresh();
@@ -316,7 +394,8 @@ export class AdminRealtimeService {
           this.adminMonitoringService.updateIncidentStatusFromEvent(
             incidentId,
             payload?.new_status || payload?.estado_actual || 'resuelto',
-            payload?.old_status || payload?.estado_anterior
+            payload?.old_status || payload?.estado_anterior,
+            eventTimestamp
           );
           this.scheduleMetricsRefresh();
           this.scheduleWorkshopsRefresh();
@@ -329,7 +408,8 @@ export class AdminRealtimeService {
           this.adminMonitoringService.updateIncidentStatusFromEvent(
             incidentId,
             'cancelado',
-            payload?.old_status
+            payload?.old_status,
+            eventTimestamp
           );
           this.scheduleMetricsRefresh();
           this.scheduleWorkshopsRefresh();
@@ -342,7 +422,22 @@ export class AdminRealtimeService {
           this.adminMonitoringService.updateIncidentStatusFromEvent(
             incidentId,
             'sin_taller_disponible',
-            payload?.old_status
+            payload?.old_status,
+            eventTimestamp
+          );
+          this.scheduleMetricsRefresh();
+          this.scheduleWorkshopsRefresh();
+          this.scheduleChartsRefresh();
+        }
+        break;
+      case 'cancellation.approved':
+      case 'cancellation_approved':
+        if (hasIncidentId) {
+          this.adminMonitoringService.updateIncidentStatusFromEvent(
+            incidentId,
+            'pendiente',
+            payload?.old_status || payload?.estado_anterior,
+            eventTimestamp
           );
           this.scheduleMetricsRefresh();
           this.scheduleWorkshopsRefresh();
@@ -386,18 +481,18 @@ export class AdminRealtimeService {
   }
 
   private scheduleMetricsRefresh(): void {
-    // Disabled by design: no HTTP auto-refresh from realtime events.
-    // Metrics must update only from event payloads or explicit user action.
+    // Sin recarga HTTP automática: las cards deben actualizar solo el dato
+    // modificado a partir del evento realtime recibido.
   }
 
   private scheduleWorkshopsRefresh(): void {
-    // Disabled by design: no HTTP auto-refresh from realtime events.
-    // Workshops must update only from event payloads or explicit user action.
+    // Sin recarga HTTP automática: la lista y métricas de talleres se ajustan
+    // únicamente con parches locales derivados del evento.
   }
 
   private scheduleChartsRefresh(): void {
-    // Disabled by design: no HTTP auto-refresh from realtime events.
-    // Charts must update only from event payloads or explicit user action.
+    // Sin recarga HTTP automática: las gráficas se mantienen desde el estado
+    // local que ya se parchea con cada transición.
   }
 
   destroy(): void {

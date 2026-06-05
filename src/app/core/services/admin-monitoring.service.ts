@@ -14,6 +14,8 @@ import {
   IncidentsResponse,
   IncidentBasic,
   WorkshopsResponse,
+  WorkshopWithStatus,
+  WorkshopsByStatus,
   ChartData,
   IncidentFilters,
   MonitoringState,
@@ -199,6 +201,7 @@ export class AdminMonitoringService {
 
       if (response.data) {
         this.workshops.set(response.data);
+        this.reconcileWorkshopMetricsFromState(response.data.by_status);
       } else {
         throw new Error(response.message || 'Error loading workshops');
       }
@@ -331,6 +334,8 @@ export class AdminMonitoringService {
       updated_at: new Date().toISOString()
     };
     this.metrics.set(this.syncMetricFields(updated));
+    this.patchIncidentStatusBreakdown(normalizedStatus, count);
+    this.patchIncidentStatusChart(normalizedStatus, count);
     this.lastUpdate.set(new Date());
   }
 
@@ -389,7 +394,6 @@ export class AdminMonitoringService {
       en_sitio: 0,
       sin_taller_disponible: current.unassigned_incidents ?? 0,
       resuelto: current.resolved_today ?? 0,
-      completado: 0,
       cancelado: 0,
     };
   }
@@ -400,13 +404,20 @@ export class AdminMonitoringService {
     const normalizedOldStatus = this.normalizeIncidentStatus(oldStatus);
     const normalizedNewStatus = this.normalizeIncidentStatus(newStatus);
     const statusCounts = this.ensureStatusCountsFromMetrics(current);
+    let resolvedToday = current.resolved_today ?? 0;
     if (normalizedOldStatus !== 'unknown') {
       statusCounts[normalizedOldStatus] = Math.max(0, (statusCounts[normalizedOldStatus] || 0) - 1);
     }
     statusCounts[normalizedNewStatus] = (statusCounts[normalizedNewStatus] || 0) + 1;
+    if (normalizedOldStatus === 'resuelto' && normalizedNewStatus !== 'resuelto') {
+      resolvedToday = Math.max(0, resolvedToday - 1);
+    } else if (normalizedOldStatus !== 'resuelto' && normalizedNewStatus === 'resuelto') {
+      resolvedToday += 1;
+    }
     const updated = {
       ...current,
       status_counts: statusCounts,
+      resolved_today: resolvedToday,
       updated_at: new Date().toISOString()
     };
     this.metrics.set(this.syncMetricFields(updated));
@@ -431,7 +442,11 @@ export class AdminMonitoringService {
   /**
    * Update a single incident from realtime event
    */
-  updateIncidentFromEvent(incidentId: number, updates: any): void {
+  updateIncidentFromEvent(
+    incidentId: number,
+    updates: any,
+    eventTimestamp?: string
+  ): void {
     const normalizedIncidentId = Number(incidentId);
     if (!Number.isFinite(normalizedIncidentId) || normalizedIncidentId <= 0) return;
 
@@ -440,19 +455,34 @@ export class AdminMonitoringService {
 
     let changedOldStatus: string | undefined;
     let changedNewStatus: string | undefined;
+    let appliedUpdate = false;
+    const resolvedTimestamp = this.resolveIncidentEventTimestamp(
+      eventTimestamp,
+      updates?.updated_at,
+      updates?.timestamp
+    );
     const normalizedUpdates = {
       ...updates,
+      ...(resolvedTimestamp ? { updated_at: resolvedTimestamp } : {}),
       ...(updates?.estado_actual ? { estado_actual: this.normalizeIncidentStatus(updates.estado_actual) } : {}),
     };
 
     const updatedIncidents = currentIncidents.incidents.map(incident => {
       if (Number(incident.id) === normalizedIncidentId) {
+        if (this.isStaleIncidentEvent(incident.updated_at, resolvedTimestamp)) {
+          return incident;
+        }
+        appliedUpdate = true;
         changedOldStatus = this.normalizeIncidentStatus(incident.estado_actual);
         changedNewStatus = this.normalizeIncidentStatus(normalizedUpdates?.estado_actual || incident.estado_actual);
         return { ...incident, ...normalizedUpdates };
       }
       return incident;
     });
+
+    if (!appliedUpdate) {
+      return;
+    }
 
     this.incidents.set({
       ...currentIncidents,
@@ -461,10 +491,11 @@ export class AdminMonitoringService {
 
     if (changedOldStatus && changedNewStatus && changedOldStatus !== changedNewStatus) {
       // Keep incidents.by_status in sync for list/filters.
-      // Metrics are updated from authoritative dashboard events
-      // (dashboard.incident_count_changed / dashboard.metrics_updated)
-      // to avoid double counting.
+      // Also shift local metrics immediately so cards stay in sync even when
+      // dashboard count events arrive later or are skipped.
+      // Absolute dashboard events still reconcile the final counts afterward.
       this.updateIncidentsByStatus(changedOldStatus, changedNewStatus);
+      this.shiftIncidentCount(changedOldStatus, changedNewStatus);
     }
   }
 
@@ -476,6 +507,9 @@ export class AdminMonitoringService {
     if (!currentIncidents) return;
 
     const normalized = this.normalizeIncidentEventPayload(incident);
+    if (!Number.isFinite(Number(normalized.id)) || Number(normalized.id) <= 0) {
+      return;
+    }
     const exists = currentIncidents.incidents.some(item => item.id === normalized.id);
     const nextIncidents = exists
       ? currentIncidents.incidents.map(item =>
@@ -527,9 +561,14 @@ export class AdminMonitoringService {
     const currentWorkshops = this.workshops();
     if (!currentWorkshops) return;
 
+    let previousStatus: string | undefined;
+    let nextStatus: string | undefined;
     const updatedWorkshops = currentWorkshops.workshops.map(workshop => {
       if (workshop.id === workshopId) {
-        return { ...workshop, ...updates };
+        previousStatus = this.normalizeWorkshopStatus(workshop.availability_status);
+        const mergedWorkshop = { ...workshop, ...updates };
+        nextStatus = this.deriveWorkshopStatus(mergedWorkshop);
+        return { ...mergedWorkshop, availability_status: nextStatus };
       }
       return workshop;
     });
@@ -538,6 +577,10 @@ export class AdminMonitoringService {
       ...currentWorkshops,
       workshops: updatedWorkshops
     });
+
+    if (previousStatus && nextStatus && previousStatus !== nextStatus) {
+      this.updateWorkshopsByStatus(previousStatus, nextStatus);
+    }
   }
 
   /**
@@ -553,7 +596,8 @@ export class AdminMonitoringService {
   updateIncidentStatusFromEvent(
     incidentId: number,
     newStatus: string,
-    oldStatus?: string
+    oldStatus?: string,
+    eventTimestamp?: string
   ): void {
     const normalizedIncidentId = Number(incidentId);
     if (!Number.isFinite(normalizedIncidentId) || normalizedIncidentId <= 0) return;
@@ -567,8 +611,8 @@ export class AdminMonitoringService {
 
     this.updateIncidentFromEvent(normalizedIncidentId, {
       estado_actual: normalizedStatus,
-      updated_at: new Date().toISOString()
-    });
+      updated_at: eventTimestamp || new Date().toISOString()
+    }, eventTimestamp);
 
     if (!currentIncident && previousStatus && previousStatus !== normalizedStatus) {
       // Incident may be outside current page/filter.
@@ -603,6 +647,31 @@ export class AdminMonitoringService {
     };
   }
 
+  private resolveIncidentEventTimestamp(...values: Array<string | null | undefined>): string | undefined {
+    for (const value of values) {
+      if (!value) continue;
+      const parsed = Date.parse(value);
+      if (!Number.isNaN(parsed)) {
+        return new Date(parsed).toISOString();
+      }
+    }
+    return undefined;
+  }
+
+  private isStaleIncidentEvent(
+    currentUpdatedAt: string | null | undefined,
+    incomingUpdatedAt: string | null | undefined
+  ): boolean {
+    const currentTime = currentUpdatedAt ? Date.parse(currentUpdatedAt) : Number.NaN;
+    const incomingTime = incomingUpdatedAt ? Date.parse(incomingUpdatedAt) : Number.NaN;
+
+    if (Number.isNaN(currentTime) || Number.isNaN(incomingTime)) {
+      return false;
+    }
+
+    return incomingTime < currentTime;
+  }
+
   private normalizeIncidentStatus(statusRaw: string | null | undefined): string {
     const status = String(statusRaw || '').trim().toLowerCase();
     const map: Record<string, string> = {
@@ -625,9 +694,9 @@ export class AdminMonitoringService {
       en_sitio: 'en_sitio',
       'en sitio': 'en_sitio',
       resolved: 'resuelto',
-      completed: 'completado',
+      completed: 'resuelto',
       resuelto: 'resuelto',
-      completado: 'completado',
+      completado: 'resuelto',
       cancelled: 'cancelado',
       cancelado: 'cancelado',
       no_workshop_available: 'sin_taller_disponible',
@@ -657,6 +726,106 @@ export class AdminMonitoringService {
       ...currentIncidents,
       by_status: byStatus
     });
+
+    this.patchIncidentStatusChart(normalizedNewStatus, byStatus[normalizedNewStatus] || 0);
+    if (normalizedOldStatus) {
+      this.patchIncidentStatusChart(normalizedOldStatus, byStatus[normalizedOldStatus] || 0);
+    }
+  }
+
+  private updateWorkshopsByStatus(oldStatus: string, newStatus: string): void {
+    const currentWorkshops = this.workshops();
+    if (!currentWorkshops) return;
+
+    const byStatus = { ...currentWorkshops.by_status } as typeof currentWorkshops.by_status;
+    const normalizedOldStatus = this.normalizeWorkshopStatus(oldStatus);
+    const normalizedNewStatus = this.normalizeWorkshopStatus(newStatus);
+    const isWorkshopStatusKey = (value: string): value is keyof WorkshopsByStatus =>
+      value in byStatus;
+
+    if (isWorkshopStatusKey(normalizedOldStatus)) {
+      byStatus[normalizedOldStatus] = Math.max(0, (byStatus[normalizedOldStatus] || 0) - 1);
+    }
+
+    if (isWorkshopStatusKey(normalizedNewStatus)) {
+      byStatus[normalizedNewStatus] = (byStatus[normalizedNewStatus] || 0) + 1;
+    }
+
+    this.workshops.set({
+      ...currentWorkshops,
+      by_status: byStatus
+    });
+
+    const currentMetrics = this.metrics();
+    if (currentMetrics) {
+      this.metrics.set({
+        ...currentMetrics,
+        available_workshops: byStatus['available'] || 0,
+        busy_workshops: byStatus['busy'] || 0,
+        offline_workshops: (byStatus['offline'] || 0) + (byStatus['out_of_service'] || 0),
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    this.patchWorkshopStatusChart('available', byStatus['available'] || 0);
+    this.patchWorkshopStatusChart('busy', byStatus['busy'] || 0);
+    this.patchWorkshopStatusChart('offline', byStatus['offline'] || 0);
+    this.patchWorkshopStatusChart('out_of_service', byStatus['out_of_service'] || 0);
+    this.lastUpdate.set(new Date());
+  }
+
+  private patchIncidentStatusBreakdown(status: string, count: number): void {
+    const currentIncidents = this.incidents();
+    if (!currentIncidents) return;
+
+    this.incidents.set({
+      ...currentIncidents,
+      by_status: {
+        ...currentIncidents.by_status,
+        [status]: count
+      }
+    });
+  }
+
+  private patchIncidentStatusChart(status: string, count: number): void {
+    const currentCharts = this.charts();
+    if (!currentCharts) return;
+
+    const nextItems = [...currentCharts.incidents_by_status];
+    const index = nextItems.findIndex(item => this.normalizeIncidentStatus(item.name) === status);
+
+    if (index >= 0) {
+      nextItems[index] = { ...nextItems[index], value: count };
+    } else {
+      nextItems.push({ name: status, value: count });
+    }
+
+    this.charts.set({
+      ...currentCharts,
+      incidents_by_status: nextItems
+    });
+  }
+
+  private patchWorkshopStatusChart(status: string, count: number): void {
+    const currentCharts = this.charts();
+    if (!currentCharts) return;
+
+    const nextItems = [...currentCharts.workshops_by_status];
+    const normalizedStatus = this.normalizeWorkshopStatus(status);
+    const index = nextItems.findIndex(
+      item => this.normalizeWorkshopStatus(item.name) === normalizedStatus
+    );
+
+    if (index >= 0) {
+      nextItems[index] = { ...nextItems[index], value: count };
+    } else {
+      nextItems.push({ name: normalizedStatus, value: count });
+    }
+
+    this.charts.set({
+      ...currentCharts,
+      workshops_by_status: nextItems
+    });
   }
 
   private syncMetricFields(metrics: SystemMetrics): SystemMetrics {
@@ -675,7 +844,6 @@ export class AdminMonitoringService {
       'en_sitio',
       'sin_taller_disponible',
       'resuelto',
-      'completado',
       'cancelado',
     ]);
     const canonicalCounts = Object.fromEntries(
@@ -698,6 +866,12 @@ export class AdminMonitoringService {
     const activeFromStatus = pending + assigned + inProgress + unassigned;
     const active = hasCanonicalStatusCounts ? activeFromStatus : (metrics.active_incidents ?? 0);
     const statusTotal = Object.values(canonicalCounts).reduce((acc, value) => acc + (value || 0), 0);
+    const workshopCounts = this.workshops()?.by_status;
+    const availableWorkshops = workshopCounts?.available ?? metrics.available_workshops;
+    const busyWorkshops = workshopCounts?.busy ?? metrics.busy_workshops;
+    const offlineWorkshops = workshopCounts
+      ? ((workshopCounts.offline || 0) + (workshopCounts.out_of_service || 0))
+      : metrics.offline_workshops;
 
     return {
       ...metrics,
@@ -707,7 +881,63 @@ export class AdminMonitoringService {
       in_progress_incidents: inProgress,
       unassigned_incidents: unassigned,
       active_incidents: active,
-      total_incidents: Math.max(metrics.total_incidents || 0, statusTotal)
+      total_incidents: Math.max(metrics.total_incidents || 0, statusTotal),
+      available_workshops: availableWorkshops,
+      busy_workshops: busyWorkshops,
+      offline_workshops: offlineWorkshops,
     };
+  }
+
+  private normalizeWorkshopStatus(statusRaw: string | null | undefined): string {
+    const status = String(statusRaw || '').trim().toLowerCase();
+    const map: Record<string, string> = {
+      available: 'available',
+      disponible: 'available',
+      busy: 'busy',
+      ocupado: 'busy',
+      offline: 'offline',
+      'fuera de línea': 'offline',
+      'fuera de linea': 'offline',
+      out_of_service: 'out_of_service',
+      'fuera de servicio': 'out_of_service',
+    };
+    return map[status] || status || 'offline';
+  }
+
+  private deriveWorkshopStatus(workshop: Partial<WorkshopWithStatus> & Record<string, any>): keyof WorkshopsByStatus {
+    if (workshop.is_active === false) {
+      return 'offline';
+    }
+    if (workshop.is_available === false) {
+      return 'offline';
+    }
+    if (workshop.is_verified === false) {
+      return 'out_of_service';
+    }
+
+    const totalTechnicians = Number(workshop.total_technicians ?? 0);
+    const availableTechnicians = Number(workshop.available_technicians ?? 0);
+
+    if (totalTechnicians <= 0) {
+      return 'offline';
+    }
+    if (availableTechnicians > 0) {
+      return 'available';
+    }
+    return 'busy';
+  }
+
+  private reconcileWorkshopMetricsFromState(byStatus?: WorkshopsByStatus): void {
+    const currentMetrics = this.metrics();
+    if (!currentMetrics || !byStatus) return;
+
+    this.metrics.set({
+      ...currentMetrics,
+      available_workshops: byStatus.available || 0,
+      busy_workshops: byStatus.busy || 0,
+      offline_workshops: (byStatus.offline || 0) + (byStatus.out_of_service || 0),
+      updated_at: new Date().toISOString(),
+    });
+    this.lastUpdate.set(new Date());
   }
 }

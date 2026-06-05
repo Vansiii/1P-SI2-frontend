@@ -249,8 +249,11 @@ export class IncidentRealtimeService {
       this.emitUpdate(update);
       this.showToast(update);
 
-      // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'asignado');
+      // The request remains pending until the workshop accepts it.
+      this.updateIncidentStatus(
+        data.incident_id,
+        data.current_status || data.new_status || 'pendiente'
+      );
     } catch (error) {
       console.error('❌ Error handling incident.assigned event:', error, event);
     }
@@ -281,8 +284,11 @@ export class IncidentRealtimeService {
       this.emitUpdate(update);
       this.showToast(update);
 
-      // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'aceptado');
+      const acceptedStatus =
+        data.new_status ||
+        (data.technician_id ? 'en_proceso' : 'asignado');
+
+      this.updateIncidentStatus(data.incident_id, acceptedStatus);
     } catch (error) {
       console.error('❌ Error handling assignment_accepted event:', error, event);
     }
@@ -333,14 +339,21 @@ export class IncidentRealtimeService {
       
       const statusMessages: Record<string, string> = {
         'pending': 'Pendiente',
+        'pendiente': 'Pendiente',
         'assigned': 'Asignado',
+        'asignado': 'Asignado',
         'accepted': 'Aceptado',
+        'aceptado': 'Aceptado',
         'rejected': 'Rechazado',
         'on_way': 'En camino',
+        'en_camino': 'En camino',
         'arrived': 'Técnico llegó',
         'in_progress': 'En progreso',
+        'en_proceso': 'En progreso',
         'completed': 'Completado',
+        'resuelto': 'Resuelto',
         'cancelled': 'Cancelado',
+        'cancelado': 'Cancelado',
         'sin_taller_disponible': 'Sin taller disponible'
       };
 
@@ -385,7 +398,7 @@ export class IncidentRealtimeService {
       this.emitUpdate(update);
       
       // Show toast for important status changes
-      if (['completed', 'cancelled', 'rejected'].includes(data.new_status)) {
+      if (['completed', 'resuelto', 'cancelled', 'cancelado', 'rejected'].includes(data.new_status)) {
         this.showToast(update);
       }
 

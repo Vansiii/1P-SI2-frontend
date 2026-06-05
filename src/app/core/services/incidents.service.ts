@@ -6,6 +6,7 @@ import { environment } from '../../../environments/environment';
 import { ApiResponse } from '../models/api.models';
 import { WebSocketService } from './websocket.service';
 import { AuthService } from './auth.service';
+import { OfflineCacheService } from './offline-cache.service';
 import { 
   Incident, 
   AIAnalysis,
@@ -94,7 +95,7 @@ export interface AssignmentAttemptInfo {
   workshop_id: number;
   workshop_name: string;
   attempted_at: string;
-  response_status: 'accepted' | 'rejected' | 'no_response' | 'timeout';
+  response_status: 'pending' | 'accepted' | 'rejected' | 'no_response' | 'timeout' | 'cancelled';
   rejection_reason: string | null;
   responded_at: string | null;
 }
@@ -166,6 +167,7 @@ export class IncidentsService {
   private readonly http = inject(HttpClient);
   private readonly wsService = inject(WebSocketService);
   private readonly authService = inject(AuthService);
+  private readonly offlineCache = inject(OfflineCacheService);
   private readonly apiUrl = `${environment.apiUrl}/incidentes`;
 
   // Estado reactivo de incidentes
@@ -331,6 +333,11 @@ export class IncidentsService {
     // Cancelación mutua: el incidente deja de pertenecer al taller actual inmediatamente.
     if (newStatus === 'pendiente' && reason === 'mutual_cancellation') {
       const currentUser = this.authService.currentUser();
+      const incidentId = this.toInt(data.incident_id);
+
+      if (!incidentId) {
+        return;
+      }
       if (currentUser?.user_type === 'workshop') {
         const filtered = incidents.filter(i => i.id !== incidentId);
         if (filtered.length !== incidents.length) {
@@ -825,16 +832,51 @@ export class IncidentsService {
     try {
       const currentUser = this.authService.currentUser();
 
+      const incidentId = this.toInt(data.incident_id);
+
+      if (!incidentId) {
+        return;
+      }
+
       if (data.assignment_mode === 'manual' && currentUser?.user_type === 'workshop') {
         const incidents = this.incidentsSubject.value;
-        const filteredIncidents = incidents.filter(i => i.id !== data.incident_id);
+        const filteredIncidents = incidents.filter(i => i.id !== incidentId);
         this.incidentsSubject.next(filteredIncidents);
         console.log(`🚫 Manual incident ${data.incident_id} removed from workshop list (timeout)`);
         return;
       }
+      if (currentUser?.user_type === 'workshop') {
+        const userWorkshopId = this.toInt(currentUser.workshop_id ?? currentUser.id);
+        const timedOutWorkshopId = this.toInt(data.workshop_id);
+        const incidents = this.incidentsSubject.value;
+        const index = incidents.findIndex(i => i.id === incidentId);
+
+        if (!userWorkshopId || !timedOutWorkshopId || timedOutWorkshopId !== userWorkshopId) {
+          console.log(
+            `Skipping timeout update for workshop ${userWorkshopId} ` +
+            `(event belongs to workshop ${timedOutWorkshopId})`
+          );
+          return;
+        }
+
+        if (index === -1) {
+          console.log(`Incident ${incidentId} is not in workshop cache during timeout`);
+          return;
+        }
+
+        const updated = [...incidents];
+        updated[index] = safeIncidentMerge(updated[index], {
+          estado_actual: 'pendiente',
+          estado_label: 'Pendiente',
+          updated_at: data.timed_out_at || data.timestamp || new Date().toISOString()
+        });
+        this.incidentsSubject.next(updated);
+        console.log(`Automatic incident ${incidentId} kept visible after timeout for workshop ${userWorkshopId}`);
+        return;
+      }
       // Fetch the updated incident to get its current state
       // Don't just remove it - it might have been reassigned or changed state
-      const updatedIncident = await this.getIncidentById(data.incident_id);
+      const updatedIncident = await this.getIncidentById(incidentId);
       const normalizedStatus = this.mapStatus(
         String(
           (updatedIncident as any)?.estado ??
@@ -845,7 +887,7 @@ export class IncidentsService {
 
       // Re-read cache AFTER fetch to detect concurrent updates from other handlers
       const incidents = this.incidentsSubject.value;
-      const index = incidents.findIndex(i => i.id === data.incident_id);
+      const index = incidents.findIndex(i => i.id === incidentId);
 
       if (index !== -1 && incidents[index].estado_actual === 'sin_taller_disponible') {
         console.log(`⏭️ Skipping timeout update: incident ${data.incident_id} already in sin_taller_disponible`);
@@ -895,7 +937,7 @@ export class IncidentsService {
       if (index !== -1) {
         const currentUser = this.authService.currentUser();
         if (currentUser?.user_type === 'workshop' && normalizedStatus === 'sin_taller_disponible') {
-          const filteredIncidents = incidents.filter(i => i.id !== data.incident_id);
+          const filteredIncidents = incidents.filter(i => i.id !== incidentId);
           this.incidentsSubject.next(filteredIncidents);
           console.log(`🚫 Incident ${data.incident_id} removed from workshop list (sin_taller_disponible)`);
           return;
@@ -912,6 +954,11 @@ export class IncidentsService {
       }
     } catch (error) {
       console.error(`❌ Error fetching incident ${data.incident_id} after timeout:`, error);
+      const currentUser = this.authService.currentUser();
+      if (currentUser?.user_type === 'workshop') {
+        console.log('Keeping workshop list unchanged after timeout fetch failure');
+        return;
+      }
       // If fetch fails, just remove it from the list as fallback
       const incidents = this.incidentsSubject.value;
       const filteredIncidents = incidents.filter(i => i.id !== data.incident_id);
@@ -1117,14 +1164,41 @@ export class IncidentsService {
    * ✅ CORREGIDO: Usa inmutabilidad completa
    */
   private handleIncidentReassigned(data: any): void {
-    const incidentId = data?.incident_id;
-    const newWorkshopId = data?.new_workshop_id;
+    const incidentId = this.toInt(data?.incident_id);
+    const newWorkshopId = this.toInt(data?.new_workshop_id);
+    const previousWorkshopId = this.toInt(data?.previous_workshop_id);
     const newWorkshopName = data?.new_workshop_name;
     const reason = data?.reason;
     
     if (!incidentId || !newWorkshopId) {
       console.warn('❌ incident_reassigned: payload incompleto', data);
       return;
+    }
+
+    const currentUser = this.authService.currentUser();
+    if (currentUser?.user_type === 'workshop') {
+      const userWorkshopId = this.toInt(currentUser.workshop_id ?? currentUser.id);
+      if (!userWorkshopId) {
+        return;
+      }
+
+      if (previousWorkshopId === userWorkshopId && newWorkshopId !== userWorkshopId) {
+        const filtered = this.incidentsSubject.value.filter(i => i.id !== incidentId);
+        this.incidentsSubject.next(filtered);
+        console.log(
+          `Incidente ${incidentId} removido del taller ${userWorkshopId} ` +
+          `(reasignado a taller ${newWorkshopId})`
+        );
+        return;
+      }
+
+      if (newWorkshopId !== userWorkshopId) {
+        console.log(
+          `Skipping incident_reassigned for workshop ${userWorkshopId}; ` +
+          `new workshop is ${newWorkshopId}`
+        );
+        return;
+      }
     }
 
     console.log(
@@ -1141,7 +1215,8 @@ export class IncidentsService {
       updated[index] = safeIncidentMerge(updated[index], {
         taller_id: newWorkshopId,
         tecnico_id: null, // Resetear técnico al reasignar
-        estado_actual: 'asignado',
+        estado_actual: 'pendiente',
+        estado_label: 'Pendiente',
         updated_at: data.timestamp || new Date().toISOString()
       });
       this.incidentsSubject.next(updated);
@@ -1311,9 +1386,18 @@ export class IncidentsService {
       if (!response) {
         throw new Error('No response received from server');
       }
+      void this.offlineCache.put('incidents', 'list', response.data);
       return response.data;
     } catch (error: any) {
       console.error('Error fetching incidents:', error);
+      if (!navigator.onLine) {
+        const cached = await this.offlineCache.get<LegacyIncident[]>('incidents', 'list');
+        if (cached) {
+          console.log('📦 Loaded incidents from offline cache');
+          return cached;
+        }
+        return [];
+      }
       throw new Error(error?.error?.message || 'Error al cargar incidentes');
     }
   }
@@ -1329,10 +1413,18 @@ export class IncidentsService {
       if (!response) {
         throw new Error('No response received from server');
       }
-      // Transform legacy incidents to new model
+      void this.offlineCache.put('incidents', 'list', response.data);
       return response.data.map(legacy => this.transformLegacyIncident(legacy));
     } catch (error: any) {
       console.error('Error fetching incidents:', error);
+      if (!navigator.onLine) {
+        const cached = await this.offlineCache.get<LegacyIncident[]>('incidents', 'list');
+        if (cached) {
+          console.log('📦 Loaded incidents from offline cache');
+          return cached.map(legacy => this.transformLegacyIncident(legacy));
+        }
+        return [];
+      }
       throw new Error(error?.error?.message || 'Error al cargar incidentes');
     }
   }
@@ -1499,9 +1591,17 @@ export class IncidentsService {
       if (!response) {
         throw new Error('No response received from server');
       }
+      void this.offlineCache.put('incidents', `detail_${id}`, response.data);
       return response.data;
     } catch (error: any) {
       console.error(`Error fetching incident ${id}:`, error);
+      if (!navigator.onLine) {
+        const cached = await this.offlineCache.get<Incident>('incidents', `detail_${id}`);
+        if (cached) {
+          console.log(`📦 Loaded incident ${id} from offline cache`);
+          return cached;
+        }
+      }
       if (error?.status === 404) {
         throw new Error(`Incidente #${id} no encontrado`);
       }

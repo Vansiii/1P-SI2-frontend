@@ -726,7 +726,13 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
         ...(responses[2]?.data || []),
         ...(responses[3]?.data || [])
       ];
-      const unifiedIncidents = rawIncidents.map(r => mapApiToIncident(r)) as UnifiedIncident[];
+      const unifiedIncidents = Array.from(
+        new Map(
+          rawIncidents
+            .map(r => mapApiToIncident(r) as UnifiedIncident)
+            .map(incident => [incident.id, incident])
+        ).values()
+      );
 
       console.log('✅ Workshop incidents loaded (backend filtered):', unifiedIncidents.length);
 
@@ -774,7 +780,13 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
         ...(responses[2]?.data || []),
         ...(responses[3]?.data || [])
       ];
-      const unifiedIncidents = rawIncidents.map(r => mapApiToIncident(r)) as UnifiedIncident[];
+      const unifiedIncidents = Array.from(
+        new Map(
+          rawIncidents
+            .map(r => mapApiToIncident(r) as UnifiedIncident)
+            .map(incident => [incident.id, incident])
+        ).values()
+      );
 
       console.log('All incidents loaded for map:', unifiedIncidents.length);
 
@@ -1560,19 +1572,10 @@ export class IncidentsListComponent implements OnInit, OnDestroy {
            return;
          }
 
-         // MODO AUTO: comportamiento existente (marcar como timed out)
-         if (!(currentAll[idx] as any)._isTimedOut) {
-           const updated = [...currentAll];
-           updated[idx] = {
-             ...updated[idx],
-             _isTimedOut: true,
-             estado: 'sin_taller_disponible' as any,
-             estado_actual: 'sin_taller_disponible' as any,
-           };
-           this.allIncidents.set(updated);
-           this.applyCurrentFilter();
-           console.log(`Incident #${timedOutIncidentId} timed out (via WebSocket event)`);
-         }
+         // MODO AUTO: la fuente de verdad queda en IncidentsService.
+         // No forzar sin_taller_disponible aquí porque el incidente puede
+         // seguir visible para este taller hasta reasignación o estado final real.
+         console.log(`Incident #${timedOutIncidentId} timeout received (auto mode, waiting for realtime state sync)`);
        });
      console.log('Timeout checker initialized (reactive via WebSocket events)');
    }

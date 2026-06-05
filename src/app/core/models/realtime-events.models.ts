@@ -146,6 +146,8 @@ export interface IncidentCreatedEventData {
 export interface IncidentAssignedEventData {
   incident_id: number;
   suggested_technician: SuggestedTechnician;
+  current_status?: string;
+  new_status?: string;
 }
 
 /**
@@ -165,6 +167,7 @@ export interface IncidentAssignmentAcceptedEventData {
   incident_id: number;
   workshop_id: number;
   technician_id: number | null;
+  new_status?: string;
   accepted_at: string;
 }
 
@@ -177,6 +180,7 @@ export interface IncidentAssignmentRejectedEventData {
   rejection_reason: string;
   rejection_count: number;
   rejected_at: string;
+  assignment_mode?: string;
 }
 
 /**
@@ -299,17 +303,23 @@ export interface TrackingRouteUpdatedEventData {
  */
 export interface ChatMessageSentEventData {
   message_id: number;
+  conversation_id: number;
   incident_id: number;
   sender_id: number;
   sender_name: string;
-  message: string;
-  created_at: string;
+  sender_role?: string;
+  content: string;
+  message?: string;
+  message_type?: string;
+  sent_at: string;
+  created_at?: string;
 }
 
 /**
  * Event data for chat.user_typing
  */
 export interface ChatUserTypingEventData {
+  conversation_id?: number;
   incident_id: number;
   user_id: number;
   user_name: string;
@@ -319,6 +329,7 @@ export interface ChatUserTypingEventData {
  * Event data for chat.user_stopped_typing
  */
 export interface ChatUserStoppedTypingEventData {
+  conversation_id?: number;
   incident_id: number;
   user_id: number;
 }
@@ -328,6 +339,7 @@ export interface ChatUserStoppedTypingEventData {
  */
 export interface ChatMessageDeliveredEventData {
   message_id: number;
+  conversation_id?: number;
   incident_id: number;
   delivered_at: string;
 }
@@ -337,6 +349,7 @@ export interface ChatMessageDeliveredEventData {
  */
 export interface ChatMessageReadEventData {
   message_id: number;
+  conversation_id?: number;
   incident_id: number;
   read_at: string;
 }
@@ -346,6 +359,7 @@ export interface ChatMessageReadEventData {
  */
 export interface ChatFileUploadedEventData {
   message_id: number;
+  conversation_id?: number;
   incident_id: number;
   file_name: string;
   file_url: string;

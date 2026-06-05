@@ -152,6 +152,10 @@ export class SystemMonitoringComponent implements OnInit, OnDestroy {
 
   // Navigation
   viewIncidentDetail(incidentId: number) {
+    if (!Number.isFinite(incidentId) || incidentId <= 0) {
+      console.warn('Ignoring invalid admin incident id from monitoring view:', incidentId);
+      return;
+    }
     this.router.navigate(['/admin/incident', incidentId]);
   }
 
@@ -335,7 +339,7 @@ export class SystemMonitoringComponent implements OnInit, OnDestroy {
     if (!chartsData || !chartsData.workshops_by_status) return [];
     
     return chartsData.workshops_by_status.map(item => ({
-      name: item.name,
+      name: this.getAvailabilityLabel(item.name),
       value: item.value
     }));
   });

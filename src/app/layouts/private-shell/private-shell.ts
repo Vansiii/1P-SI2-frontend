@@ -44,13 +44,13 @@ export class PrivateShellComponent {
     if (rawType === 'workshop') return 'Taller';
     if (rawType === 'client') return 'Cliente';
     if (rawType === 'technician') return 'Tecnico';
-    if (rawType === 'admin') return 'Administrador';
+    if (rawType === 'admin' || rawType === 'administrator') return 'Administrador';
     return 'Usuario';
   });
 
   readonly isAdmin = computed(() => {
     const userType = this.user()?.user_type ?? '';
-    return userType === 'admin';
+    return userType === 'admin' || userType === 'administrator';
   });
 
   readonly isWorkshop = computed(() => {

@@ -45,7 +45,7 @@ export class DashboardPageComponent implements OnInit {
 
   readonly isAdmin = computed(() => {
     const userType = this.user()?.user_type ?? '';
-    return userType === 'admin';
+    return userType === 'admin' || userType === 'administrator';
   });
 
   readonly isWorkshop = computed(() => {

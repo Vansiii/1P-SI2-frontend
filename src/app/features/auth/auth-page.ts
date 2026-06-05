@@ -193,7 +193,7 @@ export class AuthPageComponent implements OnInit, OnDestroy {
             return;
           }
 
-          this.router.navigate(['/dashboard']);
+          this.router.navigate([this.authService.getDefaultRouteForCurrentUser()]);
         },
         error: (error) => {
           const parsedError = this.extractAuthError(error, 'No se pudo iniciar sesion.');

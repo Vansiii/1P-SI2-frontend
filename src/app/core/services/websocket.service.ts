@@ -4,6 +4,7 @@ import { Subject, BehaviorSubject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
 import { AuthService } from './auth.service';
+import { ConnectivityService } from './connectivity.service';
 import { 
   RealtimeEvent
 } from '../models/realtime-events.models';
@@ -49,6 +50,7 @@ export class WebSocketService {
   // Dependency injection
   private readonly authService = inject(AuthService);
   private readonly http = inject(HttpClient);
+  private readonly connectivity = inject(ConnectivityService);
   private readonly destroyRef = inject(DestroyRef);
 
   // Connection state signals (Angular 21.2)
@@ -106,6 +108,23 @@ export class WebSocketService {
     this.destroyRef.onDestroy(() => {
       console.log('🧹 WebSocketService: Cleaning up resources');
       this.cleanup();
+    });
+
+    this.connectivity.onlineChange$.subscribe((online) => {
+      if (online) {
+        const currentState = this.connectionState();
+        if (currentState === 'disconnected' || currentState === 'error') {
+          console.log('🌐 Connectivity restored, attempting WebSocket reconnection');
+          this.reconnectAttemptsSignal.set(0);
+          void this.connect(this.currentIncidentId);
+        }
+      } else {
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = undefined;
+        }
+        console.log('📴 Device offline, pausing WebSocket reconnection');
+      }
     });
   }
 
@@ -640,17 +659,20 @@ export class WebSocketService {
    * Requirement 7.2: Implement handleReconnect() with exponential backoff (max 30s delay, max 10 attempts)
    */
   private handleReconnect(): void {
+    if (!this.connectivity.online) {
+      console.log('📴 Device offline, skipping WebSocket reconnection');
+      return;
+    }
+
     const currentAttempts = this.reconnectAttemptsSignal() + 1;
     this.reconnectAttemptsSignal.set(currentAttempts);
     
-    // Check if max attempts reached
     if (currentAttempts >= this.maxReconnectAttempts) {
       console.warn('⚠️ Max WebSocket reconnect attempts reached. Giving up.');
       this.updateConnectionState('disconnected', 'Max reconnection attempts exceeded');
       return;
     }
     
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
     const delay = Math.min(1000 * Math.pow(2, currentAttempts - 1), MAX_RECONNECT_DELAY_MS);
 
     console.log(`⏰ Scheduling WebSocket reconnect attempt ${currentAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);

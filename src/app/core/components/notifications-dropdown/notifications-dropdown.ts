@@ -211,6 +211,10 @@ export class NotificationsDropdownComponent {
     // Navegar después de un pequeño delay
     setTimeout(() => {
       if (this.isAdmin()) {
+        if (!Number.isFinite(Number(incident.id)) || Number(incident.id) <= 0) {
+          this.router.navigate(['/admin/monitoring']);
+          return;
+        }
         this.router.navigate(['/admin/incident', incident.id]);
       } else {
         this.router.navigate(['/workshop/incidents'], { 

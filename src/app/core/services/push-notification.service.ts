@@ -135,37 +135,8 @@ export class PushNotificationService {
 
       this.latestNotification.set(payload);
       this.notificationCount.update(count => count + 1);
-
-      // Evita duplicados con Service Worker/FCM automático:
-      // en foreground actualizamos estado local, pero no forzamos popup del sistema
-      // cuando la pestaña está visible.
-      if (payload.notification && document.visibilityState !== 'visible') {
-        this.showNotification(
-          payload.notification.title || 'MecanicoYa',
-          payload.notification.body || '',
-          payload.data,
-          dedupKeys[0]
-        );
-      }
+      this.showForegroundBrowserNotification(payload);
     });
-  }
-
-  private showNotification(title: string, body: string, data?: any, tag?: string): void {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      const notification = new Notification(title, {
-        body,
-        icon: '/logo.png',
-        badge: '/logo.png',
-        data,
-        tag: tag || 'mecanicoya-notification',
-        requireInteraction: true
-      });
-
-      notification.onclick = () => {
-        window.focus();
-        notification.close();
-      };
-    }
   }
 
   isSupported(): boolean {
@@ -186,6 +157,33 @@ export class PushNotificationService {
 
   getToken(): string | null {
     return this.currentToken;
+  }
+
+  private async showForegroundBrowserNotification(payload: any): Promise<void> {
+    const eventType = payload?.data?.event_type || payload?.data?.type;
+    if (!eventType || !['chat.message_sent', 'chat_message'].includes(eventType)) {
+      return;
+    }
+
+    const title = payload?.notification?.title;
+    const body = payload?.notification?.body;
+    if (!title || Notification.permission !== 'granted') {
+      return;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, {
+        body,
+        icon: '/assets/icons/icon-192x192.png',
+        badge: '/assets/icons/icon-72x72.png',
+        tag: payload?.data?.event_id || payload?.data?.message_id || `chat-${payload?.data?.incident_id || 'message'}`,
+        requireInteraction: true,
+        data: payload?.data || {},
+      });
+    } catch (error) {
+      console.warn('Could not display foreground browser notification:', error);
+    }
   }
 
   private buildPushDedupKeys(payload: any): string[] {
