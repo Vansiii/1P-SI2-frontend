@@ -123,6 +123,7 @@ export class VoiceCommandButtonComponent {
   private processCommand(text: string): void {
     this.isProcessing.set(true);
     this.http.post<{ data: VoiceCommandOutput }>(`${environment.apiBaseUrl}/voice/command`, { texto: text })
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (res) => {
           this.isProcessing.set(false);
