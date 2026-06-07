@@ -1,0 +1,48 @@
+<div class="container">
+  <div class="header">
+    <h1>Cotizaciones Recibidas</h1>
+  </div>
+
+  <div class="filters">
+    <button class="filter-btn" [class.active]="estadoFilter() === 'todas'" (click)="setFilter('todas')">Todas</button>
+    <button class="filter-btn" [class.active]="estadoFilter() === 'pendientes'" (click)="setFilter('pendientes')">Pendientes</button>
+    <button class="filter-btn" [class.active]="estadoFilter() === 'respondidas'" (click)="setFilter('respondidas')">Respondidas</button>
+  </div>
+
+  @if (loading()) {
+    <div class="loading">Cargando cotizaciones...</div>
+  } @else if (filtered.length === 0) {
+    <div class="empty">
+      <h3>No hay cotizaciones</h3>
+      <p>No se encontraron solicitudes de cotizacion en tu zona.</p>
+    </div>
+  } @else {
+    <div class="grid">
+      @for (c of filtered; track c.id) {
+        <div class="card" (click)="verDetalle(c.id)">
+          <div class="card-header">
+            <div class="card-title">{{ c.vehiculo_marca }} {{ c.vehiculo_modelo }} ({{ c.vehiculo_matricula }})</div>
+            @if (c.ya_respondio) {
+              <span class="badge-respondido">Respondida</span>
+            } @else {
+              <span class="badge" [style.background]="estadosColors[c.estado]">{{ estadosLabels[c.estado] }}</span>
+            }
+          </div>
+          <div class="card-body">
+            <div class="dano">{{ c.descripcion_dano }}</div>
+          </div>
+          <div class="card-footer">
+            <div class="card-meta">
+              @if (c.distance_km !== undefined) {
+                <span class="distance">{{ c.distance_km }} km</span>
+              }
+              @if (c.categoria_ia) { <span>{{ c.categoria_ia }}</span> }
+              @if (c.respuestas_count > 0) { <span>{{ c.respuestas_count }} respuesta(s)</span> }
+            </div>
+            <span>{{ c.created_at | date:'short' }}</span>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>

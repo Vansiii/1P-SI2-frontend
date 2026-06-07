@@ -1,0 +1,94 @@
+<div class="container">
+  <div class="header">
+    <h1>Mis Cotizaciones</h1>
+  </div>
+
+  <div class="tabs">
+    <span class="tab" [class.active]="tabActiva() === 'lista'" (click)="tabActiva.set('lista')">Mis solicitudes</span>
+    <span class="tab" [class.active]="tabActiva() === 'nueva'" (click)="tabActiva.set('nueva')">Solicitar cotizacion</span>
+  </div>
+
+  @if (tabActiva() === 'lista') {
+    @if (loading()) {
+      <div class="loading">Cargando cotizaciones...</div>
+    } @else if (cotizaciones().length === 0) {
+      <div class="empty">
+        <h3>No tienes cotizaciones</h3>
+        <p>Solicita una cotizacion para reparar tu vehiculo.</p>
+      </div>
+    } @else {
+      <div class="grid">
+        @for (c of cotizaciones(); track c.id) {
+          <div class="card" (click)="verDetalle(c.id)">
+            <div class="card-header">
+              <div class="card-title">{{ c.vehiculo_marca }} {{ c.vehiculo_modelo }} ({{ c.vehiculo_matricula }})</div>
+              <span class="badge" [style.background]="estadosColors[c.estado]">{{ estadosLabels[c.estado] }}</span>
+            </div>
+            <div class="card-body">{{ c.descripcion_dano }}</div>
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#9ca3af">
+              <span>{{ c.respuestas_count }} respuesta(s)</span>
+              <span>{{ c.created_at | date:'short' }}</span>
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+    @if (detalleLoading()) {
+      <div class="loading">Cargando detalle...</div>
+    } @else if (cotizacionSeleccionada(); as c) {
+      <div class="detail-section" style="margin-top:1.5rem">
+        <h3>Detalle de cotizacion #{{ c.id }}</h3>
+
+        <div class="card" style="margin-bottom:1rem">
+          <div class="card-header">
+            <div class="card-title">Estado: {{ estadosLabels[c.estado] }}</div>
+            <span class="badge" [style.background]="estadosColors[c.estado]">{{ c.estado }}</span>
+          </div>
+          <div class="card-body">{{ c.descripcion_dano }}</div>
+          @if (c.categoria_ia) {
+            <div style="background:#eff6ff; padding:0.75rem; border-radius:0.5rem; margin-bottom:0.75rem; font-size:0.875rem">
+              <strong>IA:</strong> {{ c.categoria_ia }} / Prioridad: {{ c.prioridad_ia }}
+            </div>
+          }
+        </div>
+
+        @if (incidenteId(); as iid) {
+          <div class="alert alert-info">
+            Se ha creado el incidente <strong>#{{ iid }}</strong> para seguimiento.
+            <a class="incidente-link" [routerLink]="['/workshop/incidents', iid]">
+              Ver incidente &rarr;
+            </a>
+          </div>
+        }
+
+        <h3 style="margin-bottom:0.75rem">Cotizaciones recibidas ({{ c.respuestas.length }})</h3>
+        @for (r of c.respuestas; track r.id) {
+          <div class="respuesta-card" [class.selected]="respuestaSeleccionadaId() === r.id" (click)="seleccionarRespuesta(r.id)">
+            <div class="respuesta-header">
+              <span class="respuesta-workshop">{{ r.workshop_name }}</span>
+              <span class="respuesta-precio">{{ r.costo_total | currency:'BOB':'symbol' }}</span>
+            </div>
+            <div class="respuesta-tiempo">Tiempo estimado: {{ r.tiempo_estimado_texto }}</div>
+            @if (r.notas) { <div style="font-size:0.8rem;color:#6b7280;margin-top:0.35rem">{{ r.notas }}</div> }
+            <div style="font-size:0.7rem;color:#9ca3af;margin-top:0.35rem">Valido hasta: {{ r.valida_hasta | date:'short' }}</div>
+
+            @if (c.estado === 'cotizado' && r.estado === 'pendiente' && respuestaSeleccionadaId() === r.id) {
+              <div class="actions">
+                <button class="btn btn-primary" (click)="confirmarSeleccion(); $event.stopPropagation()" [disabled]="seleccionando()">
+                  @if (seleccionando()) { Seleccionando... } @else { Seleccionar este taller }
+                </button>
+              </div>
+            }
+          </div>
+        }
+
+        @if (c.estado !== 'cancelado' && c.estado !== 'completado') {
+          <div class="actions" style="margin-top:1rem">
+            <button class="btn btn-danger" (click)="cancelar(c.id)">Cancelar cotizacion</button>
+          </div>
+        }
+      </div>
+    }
+  }
+</div>

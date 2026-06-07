@@ -150,6 +150,24 @@ export const routes: Routes = [
       {
         path: 'catalog',
         loadComponent: () => import('./features/workshop/service-catalog/service-catalog.component').then(m => m.ServiceCatalogComponent)
+      },
+      {
+        path: 'cotizaciones',
+        loadComponent: () => import('./features/workshop/cotizaciones-list/cotizaciones-list').then(m => m.CotizacionesListComponent)
+      },
+      {
+        path: 'cotizaciones/:id',
+        loadComponent: () => import('./features/workshop/cotizacion-detalle/cotizacion-detalle').then(m => m.CotizacionDetalleComponent)
+      }
+    ]
+  },
+  {
+    path: 'cotizaciones',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./features/cotizaciones/cotizaciones-cliente').then(m => m.CotizacionesClienteComponent)
       }
     ]
   },

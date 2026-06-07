@@ -1,0 +1,112 @@
+<div class="container">
+  <a class="back-link" routerLink="/workshop/cotizaciones">&larr; Volver a cotizaciones</a>
+
+  @if (loading()) {
+    <div class="loading">Cargando cotizacion...</div>
+  } @else if (error()) {
+    <div class="alert alert-error">{{ error() }}</div>
+  } @else if (cotizacion(); as c) {
+    <!-- Detalle de la cotizacion -->
+    <div class="detail-card">
+      <div class="detail-header">
+        <h2>{{ c.vehiculo_marca ?? 'Vehiculo' }} {{ c.vehiculo_modelo ?? '' }}</h2>
+        <span class="badge" [style.background]="estadosColors[c.estado]">{{ estadosLabels[c.estado] }}</span>
+      </div>
+
+      <div class="info-grid">
+        <div class="info-item"><label>Matricula</label><span>{{ c.vehiculo_matricula ?? 'N/A' }}</span></div>
+        <div class="info-item"><label>Categoria IA</label><span>{{ c.categoria_ia ?? 'No clasificado' }}</span></div>
+        <div class="info-item"><label>Prioridad</label><span>{{ c.prioridad_ia ?? 'N/A' }}</span></div>
+        <div class="info-item"><label>Fecha</label><span>{{ c.created_at | date:'medium' }}</span></div>
+      </div>
+
+      <div class="dano-section">
+        <h3>Descripcion del dano</h3>
+        <div class="dano-text">{{ c.descripcion_dano }}</div>
+      </div>
+
+      @if (c.resumen_ia) {
+        <div class="ai-section">
+          <h3>Analisis IA</h3>
+          <p>{{ c.resumen_ia }}</p>
+        </div>
+      }
+    </div>
+
+    <!-- Formulario de respuesta o mensaje de ya respondido -->
+    @if (enviadoExito()) {
+      <div class="ya-respondido">Cotizacion enviada exitosamente. El cliente recibira tu propuesta.</div>
+    } @else if (yaRespondio) {
+      <div class="ya-respondido">Ya has enviado una respuesta a esta cotizacion.</div>
+    } @else {
+      <div class="form-card">
+        <h2>Enviar Cotizacion</h2>
+
+        <div class="form-group">
+          <label>Servicios a cotizar</label>
+          <div class="service-selector">
+            @for (item of catalogItems(); track item.servicio_id) {
+              <span
+                class="service-chip"
+                [class.selected]="selectedServices.includes(item.servicio_id)"
+                (click)="toggleService(item.servicio_id)"
+              >
+                {{ item.servicio_nombre }}
+                @if (item.precio) { ({{ item.precio | currency:'BOB':'symbol' }}) }
+              </span>
+            }
+          </div>
+          @if (selectedServices.length > 0) {
+            <div class="service-summary">
+              <strong>Costo total estimado:</strong> {{ costoTotal | currency:'BOB':'symbol' }}<br>
+              <strong>Tiempo estimado:</strong> {{ tiempoTotal }} min
+            </div>
+          }
+        </div>
+
+        <div class="form-group">
+          <label>Tiempo estimado de reparacion</label>
+          <input type="text" [(ngModel)]="tiempoEstimadoTexto" placeholder="Ej: 2-3 dias habiles">
+        </div>
+
+        <div class="form-group">
+          <label>Notas adicionales</label>
+          <textarea [(ngModel)]="notas" rows="3" placeholder="Informacion adicional sobre la cotizacion..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Validez de la cotizacion (horas)</label>
+          <input type="number" [(ngModel)]="validezHoras" min="1" max="720">
+        </div>
+
+        <button
+          class="btn btn-primary"
+          [disabled]="enviando() || selectedServices.length === 0"
+          (click)="enviarRespuesta()"
+        >
+          @if (enviando()) { Enviando... } @else { Enviar Cotizacion }
+        </button>
+      </div>
+    }
+
+    <!-- Respuestas existentes -->
+    @if (c.respuestas.length > 0) {
+      <div class="detail-card responses-section">
+        <h3>Respuestas recibidas ({{ c.respuestas.length }})</h3>
+        @for (r of c.respuestas; track r.id) {
+          <div style="border-bottom: 1px solid #f3f4f6; padding: 0.75rem 0; last-child: border-bottom: 0;">
+            <div class="detail-header">
+              <span style="font-weight:600">{{ r.workshop_name }}</span>
+              <span class="badge" [style.background]="r.estado === 'pendiente' ? '#f59e0b' : '#9ca3af'">{{ r.estado }}</span>
+            </div>
+            <div class="info-grid">
+              <div class="info-item"><label>Costo</label><span>{{ r.costo_total | currency:'BOB':'symbol' }}</span></div>
+              <div class="info-item"><label>Tiempo</label><span>{{ r.tiempo_estimado_texto }}</span></div>
+            </div>
+            @if (r.notas) { <p style="font-size:0.875rem;color:#6b7280">{{ r.notas }}</p> }
+          </div>
+        }
+      </div>
+    }
+  }
+</div>
