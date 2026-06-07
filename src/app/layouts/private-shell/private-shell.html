@@ -264,6 +264,7 @@
         <!-- Notification Dropdown -->
         @if (isWorkshop() || isAdmin()) {
           <app-notifications-dropdown />
+          <app-voice-command-button (commandResult)="onVoiceCommand($event)" />
         }
 
         <!-- Profile Dropdown -->

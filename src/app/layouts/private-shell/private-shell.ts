@@ -3,10 +3,11 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationsDropdownComponent } from '../../core/components/notifications-dropdown/notifications-dropdown';
 import { IncidentsService } from '../../core/services/incidents.service';
+import { VoiceCommandButtonComponent, VoiceCommandOutput } from '../../shared/components/voice-command-button/voice-command-button';
 
 @Component({
   selector: 'app-private-shell',
-  imports: [RouterLink, RouterLinkActive, RouterOutlet, NotificationsDropdownComponent],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, NotificationsDropdownComponent, VoiceCommandButtonComponent],
   templateUrl: './private-shell.html',
   styleUrl: './private-shell.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -84,16 +85,52 @@ export class PrivateShellComponent {
     
     this.authService.logout().subscribe({
       complete: () => {
-        // El servicio ya redirige, pero mantenemos el estado de carga
-        // hasta que la navegación complete
         setTimeout(() => {
           this.isLoggingOut.set(false);
         }, 500);
       },
       error: () => {
-        // En caso de error, también quitamos el loading
         this.isLoggingOut.set(false);
       }
     });
+  }
+
+  onVoiceCommand(result: VoiceCommandOutput): void {
+    const { action, type } = result.comando;
+    const text = (result.texto_transcrito || '').toLowerCase();
+
+    // If user says "exportar/descargar" → go to reports page
+    if (text.includes('exportar') || text.includes('descargar') || text.includes('reporte')) {
+      if (this.isWorkshop()) {
+        this.router.navigate(['/workshop/reports']);
+      } else if (this.isAdmin()) {
+        this.router.navigate(['/admin/reports']);
+      }
+      return;
+    }
+
+    if (action === 'report') {
+      if (this.isWorkshop()) {
+        if (type === 'kpi' || type === 'financial' || type === 'sla' || type === 'cancelled' || type === 'hotspots' || type === 'efficiency') {
+          this.router.navigate(['/workshop/reports']);
+        } else if (type === 'technicians') {
+          this.router.navigate(['/workshop/technicians']);
+        } else {
+          this.router.navigate(['/workshop/reports']);
+        }
+      } else if (this.isAdmin()) {
+        if (type === 'system' || type === 'efficiency' || type === 'hotspots') {
+          this.router.navigate(['/admin/monitoring']);
+        } else if (type === 'audit') {
+          this.router.navigate(['/admin/audit-logs']);
+        } else if (type === 'subscriptions') {
+          this.router.navigate(['/admin/subscriptions']);
+        } else if (type === 'financial') {
+          this.router.navigate(['/admin/reports']);
+        } else {
+          this.router.navigate(['/admin/monitoring']);
+        }
+      }
+    }
   }
 }

@@ -5,12 +5,13 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseChartDirective, provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
 import { MetricsService, FinancialReport, PerformanceReport } from '../../../core/services/metrics.service';
+import { VoiceCommandButtonComponent, VoiceCommandOutput } from '../../../shared/components/voice-command-button/voice-command-button';
 
 @Component({
   selector: 'app-admin-reports',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, FormsModule, BaseChartDirective],
+  imports: [CommonModule, FormsModule, BaseChartDirective, VoiceCommandButtonComponent],
   providers: [provideCharts(withDefaultRegisterables())],
   template: `
     <div class="reports-container">
@@ -29,11 +30,23 @@ import { MetricsService, FinancialReport, PerformanceReport } from '../../../cor
             <label for="end-date">Hasta</label>
             <input id="end-date" type="date" [(ngModel)]="endDate" (change)="refreshData()" />
           </div>
+          <app-voice-command-button (commandResult)="onVoiceCommand($event)" />
           <button class="btn-refresh" (click)="refreshData()" aria-label="Actualizar datos">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
           </button>
         </div>
       </header>
+
+      <!-- Voice command chips -->
+      <div class="voice-chips-panel">
+        <span class="voice-chips-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg> Comandos de voz:</span>
+        <button class="voice-chip" (click)="export('financial','pdf')">"financiero PDF"</button>
+        <button class="voice-chip" (click)="export('financial','excel')">"financiero Excel"</button>
+        <button class="voice-chip" (click)="export('incident','pdf')">"incidentes PDF"</button>
+        <button class="voice-chip" (click)="export('incident','excel')">"incidentes Excel"</button>
+        <button class="voice-chip" (click)="export('performance','pdf')">"rendimiento PDF"</button>
+        <button class="voice-chip" (click)="export('performance','excel')">"rendimiento Excel"</button>
+      </div>
 
       <!-- KPI Grid -->
       <div class="kpi-grid">
@@ -164,6 +177,22 @@ import { MetricsService, FinancialReport, PerformanceReport } from '../../../cor
     .date-filters label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
     .date-filters input { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-light); background: #f8fafc; font-weight: 500; }
     .btn-refresh { background: var(--primary); color: white; border: none; width: 40px; height: 40px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+    .voice-chips-panel {
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px;
+      padding: 0.65rem 1rem; margin-bottom: 1.5rem;
+    }
+    .voice-chips-label {
+      font-size: 0.75rem; font-weight: 700; color: #1e40af; display: flex; align-items: center; gap: 4px;
+      margin-right: 0.25rem;
+    }
+    .voice-chip {
+      background: white; border: 1px solid #bfdbfe; border-radius: 8px;
+      padding: 4px 10px; font-size: 0.7rem; font-weight: 600;
+      color: #1e40af; cursor: pointer; transition: all 0.15s;
+    }
+    .voice-chip:hover { background: #1e40af; color: white; border-color: #1e40af; }
 
     .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 3rem; }
     .kpi-card { background: var(--surface); padding: 1.5rem; border-radius: 20px; border: 1px solid var(--border-light); box-shadow: var(--shadow-sm); }
@@ -319,5 +348,24 @@ export class AdminReportsComponent implements OnInit {
 
   export(type: 'incident' | 'financial' | 'performance', format: 'pdf' | 'excel') {
     this.metricsService.exportReport(type, format, this.startDate, this.endDate);
+  }
+
+  onVoiceCommand(result: VoiceCommandOutput): void {
+    const text = (result.texto_transcrito || '').toLowerCase();
+    const wantsPdf = text.includes('pdf');
+    const wantsExcel = text.includes('excel');
+    const fmt: 'pdf' | 'excel' = wantsPdf ? 'pdf' : wantsExcel ? 'excel' : 'pdf';
+
+    if (text.includes('financiero') || text.includes('comisión') || text.includes('ingreso')) {
+      this.export('financial', fmt);
+    } else if (text.includes('incidente') || text.includes('emergencia')) {
+      this.export('incident', fmt);
+    } else if (text.includes('rendimiento') || text.includes('taller') || text.includes('eficiencia')) {
+      this.export('performance', fmt);
+    } else if (text.includes('dashboard') || text.includes('resumen') || text.includes('métrica')) {
+      this.refreshData();
+    } else {
+      this.export('financial', fmt);
+    }
   }
 }
