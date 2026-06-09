@@ -611,7 +611,14 @@ export class IncidentRealtimeService {
       this.showToast(update);
 
       // Update incident status
-      this.updateIncidentStatus(data.incident_id, 'sin_taller_disponible');
+      // ✅ MODO AUTO: no forzar sin_taller_disponible; el incidente sigue en reasignación
+      // ✅ MODO MANUAL: el incidente vuelve al cliente y el taller debe dejar de verlo
+      const assignmentMode = data.assignment_mode;
+      if (assignmentMode === 'manual') {
+        this.updateIncidentStatus(data.incident_id, 'sin_taller_disponible');
+      } else {
+        this.updateIncidentStatus(data.incident_id, 'pendiente');
+      }
     } catch (error) {
       console.error('❌ Error handling assignment_timeout event:', error, event);
     }

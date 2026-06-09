@@ -9,12 +9,12 @@
     <!-- Detalle de la cotizacion -->
     <div class="detail-card">
       <div class="detail-header">
-        <h2>{{ c.vehiculo_marca ?? 'Vehiculo' }} {{ c.vehiculo_modelo ?? '' }}</h2>
+        <h2>{{ c.vehiculo_marca }} {{ c.vehiculo_modelo }}</h2>
         <span class="badge" [style.background]="estadosColors[c.estado]">{{ estadosLabels[c.estado] }}</span>
       </div>
 
       <div class="info-grid">
-        <div class="info-item"><label>Matricula</label><span>{{ c.vehiculo_matricula ?? 'N/A' }}</span></div>
+        <div class="info-item"><label>Matricula</label><span>{{ c.vehiculo_matricula }}</span></div>
         <div class="info-item"><label>Categoria IA</label><span>{{ c.categoria_ia ?? 'No clasificado' }}</span></div>
         <div class="info-item"><label>Prioridad</label><span>{{ c.prioridad_ia ?? 'N/A' }}</span></div>
         <div class="info-item"><label>Fecha</label><span>{{ c.created_at | date:'medium' }}</span></div>

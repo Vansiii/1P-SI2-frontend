@@ -15,6 +15,7 @@ export class PushNotificationService {
   private readonly pushKeyTimestamps = new Map<string, number>();
   private readonly PUSH_KEY_TTL_MS = 5 * 60 * 1000;
   private readonly PUSH_KEYS_MAX = 1000;
+  private onTokenRefreshCallback: ((newToken: string) => void) | null = null;
 
   readonly latestNotification = signal<any | null>(null);
   readonly notificationCount = signal<number>(0);
@@ -159,17 +160,50 @@ export class PushNotificationService {
     return this.currentToken;
   }
 
-  private async showForegroundBrowserNotification(payload: any): Promise<void> {
-    const eventType = payload?.data?.event_type || payload?.data?.type;
-    if (!eventType || !['chat.message_sent', 'chat_message'].includes(eventType)) {
-      return;
+  setOnTokenRefreshCallback(callback: (newToken: string) => void): void {
+    this.onTokenRefreshCallback = callback;
+  }
+
+  async refreshTokenIfChanged(): Promise<string | null> {
+    if (!this.messaging || !this.ready) {
+      return null;
     }
 
+    try {
+      const newToken = await getToken(this.messaging, {
+        vapidKey: environment.firebaseVapidKey || ''
+      });
+
+      if (newToken && newToken !== this.currentToken) {
+        const oldToken = this.currentToken;
+        this.currentToken = newToken;
+        console.log('FCM token refreshed:', { old: oldToken, new: newToken });
+
+        if (this.onTokenRefreshCallback) {
+          this.onTokenRefreshCallback(newToken);
+        }
+        return newToken;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error refreshing FCM token:', error);
+      return null;
+    }
+  }
+
+  getCurrentToken(): string | null {
+    return this.currentToken;
+  }
+
+  private async showForegroundBrowserNotification(payload: any): Promise<void> {
     const title = payload?.notification?.title;
     const body = payload?.notification?.body;
     if (!title || Notification.permission !== 'granted') {
       return;
     }
+
+    const eventType = payload?.data?.event_type || payload?.data?.type;
+    const incidentId = payload?.data?.incident_id;
 
     try {
       const registration = await navigator.serviceWorker.ready;
@@ -177,7 +211,9 @@ export class PushNotificationService {
         body,
         icon: '/assets/icons/icon-192x192.png',
         badge: '/assets/icons/icon-72x72.png',
-        tag: payload?.data?.event_id || payload?.data?.message_id || `chat-${payload?.data?.incident_id || 'message'}`,
+        tag: eventType
+          ? `${eventType}:${incidentId || 'system'}`
+          : payload?.data?.message_id || `notification-${Date.now()}`,
         requireInteraction: true,
         data: payload?.data || {},
       });

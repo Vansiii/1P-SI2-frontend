@@ -69,6 +69,13 @@ export class App implements OnInit {
     
     // Escuchar mensajes del Service Worker
     this.setupServiceWorkerListener();
+    
+    // Refrescar FCM token cuando el usuario vuelve a la pestaña
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        this.pushService.refreshTokenIfChanged();
+      }
+    });
   }
 
   /**
@@ -82,6 +89,25 @@ export class App implements OnInit {
       if (initialized) {
         console.log('✅ Push notifications ready');
         
+        // Set up token refresh callback: re-register when FCM rotates the token
+        this.pushService.setOnTokenRefreshCallback((newToken: string) => {
+          console.log('🔄 FCM token refreshed, re-registering...');
+          const currentUser = this.authService.currentUser();
+          if (currentUser) {
+            this.pushTokenService.registerToken({
+              token: newToken,
+              platform: 'web',
+              device_id: this.getOrCreateWebDeviceId()
+            }).then(() => {
+              const registerKey = `${currentUser.id}:web:${newToken}`;
+              localStorage.setItem(this.PUSH_REGISTERED_KEY, registerKey);
+              console.log('📱 Refreshed push token registered successfully');
+            }).catch(err => {
+              console.error('❌ Error registering refreshed push token:', err);
+            });
+          }
+        });
+
         // Si ya hay usuario logueado, registrar token
         const currentUser = this.authService.currentUser();
         if (currentUser && this.pushService.isReady()) {
