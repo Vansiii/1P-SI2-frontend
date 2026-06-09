@@ -9,6 +9,8 @@ import {
   CotizacionListItem,
   SolicitarCotizacionRequest,
   ResponderCotizacionRequest,
+  ContraofertaRequest,
+  RutaCotizacionResponse,
 } from '../models/cotizacion.model';
 
 @Injectable({ providedIn: 'root' })
@@ -71,6 +73,18 @@ export class CotizacionesService {
   cancelarCotizacion(id: number): Observable<Record<string, unknown>> {
     return this.http
       .patch<ApiResponse<Record<string, unknown>>>(`${this.apiUrl}/cotizaciones/${id}/cancelar`, {})
+      .pipe(map((r) => r.data));
+  }
+
+  enviarContraoferta(id: number, request: ContraofertaRequest): Observable<Record<string, unknown>> {
+    return this.http
+      .post<ApiResponse<Record<string, unknown>>>(`${this.apiUrl}/workshop/cotizaciones/${id}/contraoferta`, request)
+      .pipe(map((r) => r.data));
+  }
+
+  getRutaCotizacion(id: number): Observable<RutaCotizacionResponse> {
+    return this.http
+      .get<ApiResponse<RutaCotizacionResponse>>(`${this.apiUrl}/workshop/cotizaciones/${id}/ruta`)
       .pipe(map((r) => r.data));
   }
 }

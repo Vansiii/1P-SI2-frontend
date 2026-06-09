@@ -162,6 +162,11 @@ export const routes: Routes = [
     ]
   },
   {
+    path: 'cotizaciones/mapa/:id',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/workshop/cotizacion-mapa/cotizacion-mapa').then(m => m.CotizacionMapaComponent)
+  },
+  {
     path: 'cotizaciones',
     canActivate: [authGuard],
     children: [

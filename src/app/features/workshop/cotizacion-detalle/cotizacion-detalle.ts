@@ -54,6 +54,11 @@ import { Cotizacion, ServicioCotizado, ESTADO_COTIZACION_LABELS, ESTADO_COTIZACI
     .btn-primary:hover { background: #ea580c; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-secondary { background: #f9fafb; color: #374151; margin-right: 0.5rem; }
+    .btn-icon { display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;text-decoration:none;border-radius:8px;background:#f9fafb;border:1px solid #d1d5db;color:#6b7280;transition:all 0.15s; }
+    .btn-icon:hover { background: #f3f4f6; }
+    .badge-v2-banner { font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 9999px; font-weight: 600; background: #dbeafe; color: #1e40af; }
+    .mapa-link { font-size: 0.75rem; padding: 0.25rem 0.6rem; border-radius: 4px; font-weight: 500; background: #f3f4f6; color: #374151; text-decoration: none; border: 1px solid #d1d5db; transition: all 0.15s; white-space: nowrap; }
+    .mapa-link:hover { background: #e5e7eb; color: #111827; }
     .alert { padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 0.875rem; }
     .alert-error { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
     .alert-success { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
@@ -77,7 +82,8 @@ export class CotizacionDetalleComponent implements OnInit {
   enviadoExito = signal(false);
 
   selectedServices: number[] = [];
-  costoTotal = 0;
+  costoCalculado = 0;
+  costoManual: number | null = null;
   tiempoTotal = 0;
   tiempoEstimadoTexto = '';
   notas = '';
@@ -86,10 +92,18 @@ export class CotizacionDetalleComponent implements OnInit {
   readonly estadosLabels = ESTADO_COTIZACION_LABELS;
   readonly estadosColors = ESTADO_COTIZACION_COLORS;
 
+  get costoTotal(): number {
+    return this.costoManual ?? this.costoCalculado;
+  }
+
   get yaRespondio(): boolean {
     const c = this.cotizacion();
     if (!c) return false;
     return c.respuestas.some(r => r.estado === 'pendiente');
+  }
+
+  get esNegociando(): boolean {
+    return this.cotizacion()?.estado === 'negociando';
   }
 
   get serviciosSeleccionados(): ServicioCotizado[] {
@@ -122,6 +136,7 @@ export class CotizacionDetalleComponent implements OnInit {
       next: (data) => {
         this.cotizacion.set(data);
         this.loading.set(false);
+        this.autocompletarServicios();
       },
       error: () => {
         this.loading.set(false);
@@ -134,7 +149,58 @@ export class CotizacionDetalleComponent implements OnInit {
     this.catalogService.getCatalog().pipe(
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
-      next: (items) => this.catalogItems.set(items.filter(i => i.is_active)),
+      next: (items) => {
+        this.catalogItems.set(items.filter(i => i.is_active));
+        this.autocompletarServicios();
+      },
+    });
+  }
+
+  autocompletarServicios(): void {
+    const c = this.cotizacion();
+    const catalog = this.catalogItems();
+    if (!c || catalog.length === 0) return;
+    if (this.selectedServices.length > 0) return; // already selected
+
+    const cotizados = (c as any).servicios_cotizados as Array<{ servicio_id: number; nombre?: string; precio?: number; tiempo_minutos?: number }> | null;
+    if (!cotizados || cotizados.length === 0) return;
+
+    for (const sv of cotizados) {
+      const match = catalog.find(item => item.id === sv.servicio_id);
+      if (match && !this.selectedServices.includes(match.servicio_id)) {
+        this.selectedServices.push(match.servicio_id);
+      }
+    }
+    this.recalcular();
+  }
+
+  enviarContraoferta(): void {
+    const id = this.cotizacion()?.id;
+    if (!id) return;
+    if (this.selectedServices.length === 0) {
+      this.toast.error('Selecciona al menos un servicio');
+      return;
+    }
+    this.enviando.set(true);
+    this.service.enviarContraoferta(id, {
+      servicios: this.serviciosSeleccionados,
+      costo_total: this.costoTotal,
+      tiempo_estimado_minutos: this.tiempoTotal,
+      tiempo_estimado_texto: this.tiempoEstimadoTexto || 'Por definir',
+      notas: this.notas || undefined,
+    }).pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: () => {
+        this.enviando.set(false);
+        this.enviadoExito.set(true);
+        this.toast.success('Contraoferta enviada exitosamente');
+        this.loadCotizacion(id);
+      },
+      error: (err) => {
+        this.enviando.set(false);
+        this.toast.error(err.error?.detail || 'Error al enviar contraoferta');
+      },
     });
   }
 
@@ -158,7 +224,7 @@ export class CotizacionDetalleComponent implements OnInit {
         tiempo += item.tiempo_estimado_min ?? 0;
       }
     }
-    this.costoTotal = costo;
+    this.costoCalculado = costo;
     this.tiempoTotal = tiempo;
 
     if (tiempo <= 60) this.tiempoEstimadoTexto = '1 hora';

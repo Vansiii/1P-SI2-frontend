@@ -26,6 +26,9 @@ import { CotizacionListItem, ESTADO_COTIZACION_LABELS, ESTADO_COTIZACION_COLORS 
     .card-title { font-size: 0.95rem; font-weight: 600; color: #111827; }
     .badge { font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 9999px; font-weight: 500; color: #fff; }
     .badge-respondido { font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 9999px; font-weight: 500; background: #ecfdf5; color: #065f46; }
+    .badge-v2 { font-size: 0.65rem; padding: 0.15rem 0.5rem; border-radius: 9999px; font-weight: 600; background: #dbeafe; color: #1e40af; }
+    .badge-v1 { font-size: 0.65rem; padding: 0.15rem 0.5rem; border-radius: 9999px; font-weight: 500; background: #f3f4f6; color: #6b7280; }
+    .card-badges { display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center; }
     .card-body { font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem; line-height: 1.5; }
     .card-body .dano { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     .card-footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #9ca3af; }
@@ -86,8 +89,11 @@ export class CotizacionesListComponent implements OnInit {
     const items = this.cotizaciones();
     const filter = this.estadoFilter();
     if (filter === 'todas') return items;
+    if (filter === 'directas') return items.filter(c => (c as any)['version'] === 'v2');
+    if (filter === 'zona') return items.filter(c => !(c as any)['version'] || (c as any)['version'] !== 'v2');
     if (filter === 'pendientes') return items.filter(c => !c.ya_respondio);
     if (filter === 'respondidas') return items.filter(c => c.ya_respondio);
+    if (filter === 'negociando') return items.filter(c => c.estado === 'negociando');
     return items;
   }
 

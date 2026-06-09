@@ -55,6 +55,20 @@
       </div>
 
       <div class="detail-content">
+        @if (linkedCotizacion(); as cot) {
+          <div class="cotizacion-linked-banner">
+            <div class="cot-banner-content">
+              <span class="cot-banner-icon">📋</span>
+              <div>
+                <strong>Cotizacion vinculada</strong>
+                <p>Este incidente tiene una cotizacion {{ cot.version === 'v2' ? 'directa' : '' }} asociada
+                  @if (cot.costo_total_estimado) { por <strong>{{ cot.costo_total_estimado | currency:'BOB':'symbol' }}</strong> }.
+                </p>
+              </div>
+            </div>
+            <a [routerLink]="['/workshop/cotizaciones', cot.id]" class="cot-banner-link">Ver detalle →</a>
+          </div>
+        }
         <div class="detail-section">
           <h3>Descripción</h3>
           <p>{{ incident()!.descripcion }}</p>
@@ -182,7 +196,7 @@
             <div class="images-grid">
               @for (imagen of incident()!.imagenes; track imagen.id) {
                 <div class="image-item" (click)="openImageModal(imagen.file_url)">
-                  <img [src]="imagen.file_url" [alt]="imagen.file_name" />
+                  <img [src]="imagen.file_url" [alt]="imagen.file_name" (error)="onImageError($event)" />
                   <div class="image-overlay">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>

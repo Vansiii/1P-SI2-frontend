@@ -80,19 +80,19 @@ export class ServiceCatalogService {
     descripcion?: string | null;
   }): Observable<CatalogItem> {
     return this.http
-      .patch<ApiResponse<CatalogItem>>(`${this.apiUrl}/workshop/catalog/items/${id}`, data)
+      .patch<ApiResponse<CatalogItem>>(`${this.apiUrl}/workshop/catalog/items/${id}`, { ...data, item_id: id })
       .pipe(map(r => r.data));
   }
 
   toggleItem(id: number): Observable<CatalogItem> {
     return this.http
-      .patch<ApiResponse<CatalogItem>>(`${this.apiUrl}/workshop/catalog/items/${id}/toggle`, {})
+      .patch<ApiResponse<CatalogItem>>(`${this.apiUrl}/workshop/catalog/items/${id}/toggle`, { item_id: id })
       .pipe(map(r => r.data));
   }
 
   deleteItem(id: number): Observable<void> {
     return this.http
-      .delete<ApiResponse<null>>(`${this.apiUrl}/workshop/catalog/items/${id}`)
+      .delete<ApiResponse<null>>(`${this.apiUrl}/workshop/catalog/items/${id}`, { body: { item_id: id } })
       .pipe(map(() => void 0));
   }
 }

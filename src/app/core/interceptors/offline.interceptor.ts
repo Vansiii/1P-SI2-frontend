@@ -4,7 +4,14 @@ import { catchError, throwError } from 'rxjs';
 import { OfflineQueueService } from '../services/offline-queue.service';
 import { ConnectivityService } from '../services/connectivity.service';
 
-const QUEUEABLE: { url: string; method: string; type: string }[] = [
+interface QueueableEntry {
+  url: string;
+  method: string;
+  type: string;
+  filter?: (url: string) => boolean;
+}
+
+const QUEUEABLE: QueueableEntry[] = [
   { url: '/api/v1/incidents/', method: 'POST', type: 'CREATE_INCIDENT' },
   { url: '/api/v1/incidents/', method: 'PATCH', type: 'UPDATE_INCIDENT' },
   { url: '/api/v1/incident-states/', method: 'POST', type: 'UPDATE_INCIDENT_STATUS' },
@@ -21,6 +28,7 @@ const QUEUEABLE: { url: string; method: string; type: string }[] = [
   { url: '/api/v1/vehiculos', method: 'DELETE', type: 'DELETE_VEHICLE' },
   { url: '/api/v1/incidents/', method: 'POST', type: 'SELECT_WORKSHOP' },
   { url: '/api/v1/workshop/catalog', method: 'POST', type: 'CREATE_CATALOG_ITEM' },
+  { url: '/api/v1/workshop/catalog', method: 'PATCH', type: 'TOGGLE_CATALOG_ITEM', filter: (url) => url.includes('/toggle') },
   { url: '/api/v1/workshop/catalog', method: 'PATCH', type: 'UPDATE_CATALOG_ITEM' },
   { url: '/api/v1/workshop/catalog', method: 'DELETE', type: 'DELETE_CATALOG_ITEM' },
 ];
@@ -35,6 +43,7 @@ function findMatch(req: { url: string; method: string }): {
       req.url.includes(entry.url) &&
       req.method.toUpperCase() === entry.method
     ) {
+      if (entry.filter && !entry.filter(req.url)) continue;
       return {
         type: entry.type,
         endpoint: req.url,
@@ -45,25 +54,37 @@ function findMatch(req: { url: string; method: string }): {
   return null;
 }
 
+function normalizeBody(req: { body: unknown; url: string }, match: { type: string }) {
+  let body = req.body as Record<string, unknown> | null;
+  if (!body) body = {};
+
+  const itemIdMatch = req.url.match(/\/items\/(\d+)/);
+  if (itemIdMatch && !body['item_id']) {
+    body['item_id'] = parseInt(itemIdMatch[1], 10);
+  }
+  return body;
+}
+
 export const offlineInterceptor: HttpInterceptorFn = (req, next) => {
   const queue = inject(OfflineQueueService);
   const connectivity = inject(ConnectivityService);
 
   if (!connectivity.online && req.method !== 'GET' && req.method !== 'HEAD') {
     const match = findMatch(req);
-    if (match && req.body) {
+    if (match) {
+      const body = normalizeBody(req, match);
       queue
         .add({
           type: match.type,
           endpoint: match.endpoint,
           method: match.method,
-          body: req.body as Record<string, unknown>,
+          body,
         })
         .catch(() => {});
     }
     return throwError(() => new HttpErrorResponse({
       status: 0,
-      statusText: 'Offline — operación encolada',
+      statusText: 'Offline — operacion encolada',
       url: req.url,
     }));
   }
@@ -72,13 +93,14 @@ export const offlineInterceptor: HttpInterceptorFn = (req, next) => {
     catchError((err: HttpErrorResponse) => {
       if (err.status === 0 || err.status === 504 || err.status === 503) {
         const match = findMatch(req);
-        if (match && req.body) {
+        if (match) {
+          const body = normalizeBody(req, match);
           queue
             .add({
               type: match.type,
               endpoint: match.endpoint,
               method: match.method,
-              body: req.body as Record<string, unknown>,
+              body,
             })
             .catch(() => {});
         }

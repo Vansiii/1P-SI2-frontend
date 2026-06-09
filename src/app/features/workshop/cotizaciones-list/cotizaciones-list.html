@@ -5,8 +5,11 @@
 
   <div class="filters">
     <button class="filter-btn" [class.active]="estadoFilter() === 'todas'" (click)="setFilter('todas')">Todas</button>
+    <button class="filter-btn" [class.active]="estadoFilter() === 'directas'" (click)="setFilter('directas')">Directas</button>
+    <button class="filter-btn" [class.active]="estadoFilter() === 'zona'" (click)="setFilter('zona')">Zona</button>
     <button class="filter-btn" [class.active]="estadoFilter() === 'pendientes'" (click)="setFilter('pendientes')">Pendientes</button>
     <button class="filter-btn" [class.active]="estadoFilter() === 'respondidas'" (click)="setFilter('respondidas')">Respondidas</button>
+    <button class="filter-btn" [class.active]="estadoFilter() === 'negociando'" (click)="setFilter('negociando')">En negociacion</button>
   </div>
 
   @if (loading()) {
@@ -22,11 +25,18 @@
         <div class="card" (click)="verDetalle(c.id)">
           <div class="card-header">
             <div class="card-title">{{ c.vehiculo_marca }} {{ c.vehiculo_modelo }} ({{ c.vehiculo_matricula }})</div>
-            @if (c.ya_respondio) {
-              <span class="badge-respondido">Respondida</span>
-            } @else {
-              <span class="badge" [style.background]="estadosColors[c.estado]">{{ estadosLabels[c.estado] }}</span>
-            }
+            <div class="card-badges">
+              @if (c.version === 'v2') {
+                <span class="badge-v2">Directa #{{ c.incidente_id }}</span>
+              } @else {
+                <span class="badge-v1">Zona</span>
+              }
+              @if (c.ya_respondio) {
+                <span class="badge-respondido">Respondida</span>
+              } @else {
+                <span class="badge" [style.background]="estadosColors[c.estado]">{{ estadosLabels[c.estado] }}</span>
+              }
+            </div>
           </div>
           <div class="card-body">
             <div class="dano">{{ c.descripcion_dano }}</div>

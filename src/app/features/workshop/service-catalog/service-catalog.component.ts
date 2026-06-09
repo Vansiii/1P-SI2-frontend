@@ -2,6 +2,7 @@ import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ServiceCatalogService, CatalogItem, Category, BaseService } from '../../../core/services/service-catalog.service';
+import { ConnectivityService } from '../../../core/services/connectivity.service';
 
 @Component({
   selector: 'app-service-catalog',
@@ -67,6 +68,7 @@ import { ServiceCatalogService, CatalogItem, Category, BaseService } from '../..
 })
 export class ServiceCatalogComponent implements OnInit {
   private service = inject(ServiceCatalogService);
+  private connectivity = inject(ConnectivityService);
 
   items = signal<CatalogItem[]>([]);
   categories = signal<Category[]>([]);
@@ -177,7 +179,15 @@ export class ServiceCatalogComponent implements OnInit {
     if (this.formMode() === 'create') {
       this.service.createItem(data).subscribe({
         next: () => { this.loadAll(); this.closeForm(); this.formLoading.set(false); },
-        error: (err) => { this.formError.set(err.error?.detail || 'Error al crear servicio'); this.formLoading.set(false); }
+        error: (err) => {
+          if (err.status === 0) {
+            this.closeForm();
+            this.loadAll();
+            this.formLoading.set(false);
+            return;
+          }
+          this.formError.set(err.error?.detail || 'Error al crear servicio'); this.formLoading.set(false);
+        }
       });
     } else {
       const item = this.editingItem()!;
@@ -190,7 +200,15 @@ export class ServiceCatalogComponent implements OnInit {
       Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
       this.service.updateItem(item.id, updateData).subscribe({
         next: () => { this.loadAll(); this.closeForm(); this.formLoading.set(false); },
-        error: (err) => { this.formError.set(err.error?.detail || 'Error al actualizar servicio'); this.formLoading.set(false); }
+        error: (err) => {
+          if (err.status === 0) {
+            this.items.update(all => all.map(i => i.id === item.id ? { ...i, ...updateData } : i));
+            this.closeForm();
+            this.formLoading.set(false);
+            return;
+          }
+          this.formError.set(err.error?.detail || 'Error al actualizar servicio'); this.formLoading.set(false);
+        }
       });
     }
   }
@@ -201,17 +219,28 @@ export class ServiceCatalogComponent implements OnInit {
   }
 
   toggleActive(item: CatalogItem): void {
+    this.items.update(all => all.map(i => i.id === item.id ? { ...i, is_active: !i.is_active } : i));
     this.service.toggleItem(item.id).subscribe({
       next: () => this.loadAll(),
-      error: (err) => alert(err.error?.detail || 'Error al cambiar estado')
+      error: (err) => {
+        if (err.status === 0) return;
+        this.items.update(all => all.map(i => i.id === item.id ? { ...i, is_active: item.is_active } : i));
+        alert(err.error?.detail || 'Error al cambiar estado');
+      }
     });
   }
 
   deleteItem(item: CatalogItem): void {
-    if (!confirm(`¿Eliminar "${item.servicio_nombre}" del catálogo?`)) return;
+    if (!confirm(`¿Eliminar "${item.servicio_nombre}" del catalogo?`)) return;
+    const prev = [...this.items()];
+    this.items.update(all => all.filter(i => i.id !== item.id));
     this.service.deleteItem(item.id).subscribe({
       next: () => this.loadAll(),
-      error: (err) => alert(err.error?.detail || 'Error al eliminar servicio')
+      error: (err) => {
+        if (err.status === 0) return;
+        this.items.set(prev);
+        alert(err.error?.detail || 'Error al eliminar servicio');
+      }
     });
   }
 

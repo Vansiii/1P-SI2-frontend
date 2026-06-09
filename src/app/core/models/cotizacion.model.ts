@@ -8,7 +8,9 @@ export type CotizacionEstado =
   | 'en_proceso'
   | 'completado'
   | 'cancelado'
-  | 'rechazado';
+  | 'rechazado'
+  | 'negociando'
+  | 'aceptado';
 
 export const ESTADO_COTIZACION_LABELS: Record<CotizacionEstado, string> = {
   pendiente_cotizacion: 'Pendiente',
@@ -21,6 +23,8 @@ export const ESTADO_COTIZACION_LABELS: Record<CotizacionEstado, string> = {
   completado: 'Completado',
   cancelado: 'Cancelado',
   rechazado: 'Rechazado',
+  negociando: 'En negociacion',
+  aceptado: 'Aceptado',
 };
 
 export const ESTADO_COTIZACION_COLORS: Record<CotizacionEstado, string> = {
@@ -34,6 +38,8 @@ export const ESTADO_COTIZACION_COLORS: Record<CotizacionEstado, string> = {
   completado: '#059669',
   cancelado: '#9ca3af',
   rechazado: '#dc2626',
+  negociando: '#9333ea',
+  aceptado: '#0d9488',
 };
 
 export interface CotizacionRespuesta {
@@ -76,6 +82,10 @@ export interface Cotizacion {
   estado: CotizacionEstado;
   stripe_payment_intent_id: string | null;
   monto_pagado: number | null;
+  monto_aceptado: number | null;
+  version: string;
+  incidente_id: number | null;
+  chat_sala_id: number | null;
   respuestas: CotizacionRespuesta[];
   created_at: string | null;
   updated_at: string | null;
@@ -97,6 +107,8 @@ export interface CotizacionListItem {
   created_at: string | null;
   distance_km?: number;
   ya_respondio?: boolean;
+  version?: string;
+  incidente_id?: number;
 }
 
 export interface ServicioCotizado {
@@ -124,4 +136,24 @@ export interface ResponderCotizacionRequest {
   tiempo_estimado_texto: string;
   notas?: string;
   validez_horas?: number;
+}
+
+export interface ContraofertaRequest {
+  servicios: ServicioCotizado[];
+  costo_total: number;
+  tiempo_estimado_minutos: number;
+  tiempo_estimado_texto: string;
+  notas?: string;
+  mensaje_chat?: string;
+}
+
+export interface RutaCotizacionResponse {
+  origen: { lat: number; lng: number; nombre: string };
+  destino: { lat: number; lng: number; nombre: string };
+  ruta: {
+    polyline: { lat: number; lng: number }[] | null;
+    distancia_km: number;
+    duracion_minutos: number;
+  };
+  fuente: string;
 }

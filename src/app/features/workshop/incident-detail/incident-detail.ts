@@ -1,11 +1,13 @@
 import { Component, OnInit, OnDestroy, inject, signal, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { environment } from '../../../../environments/environment';
 import { IncidentsService, type IncidentAiAnalysis } from '../../../core/services/incidents.service';
+import { CotizacionesService } from '../../../core/services/cotizaciones.service';
+import { CotizacionListItem } from '../../../core/models/cotizacion.model';
 import { Incident, IncidentStatus, IncidentPriority } from '../../../core/models/incident.model';
 
 interface ApiIncidentRaw {
@@ -198,7 +200,7 @@ function mapBackendStatus(statusRaw: string): IncidentStatus {
 @Component({
   selector: 'app-workshop-incident-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterModule],
   templateUrl: './incident-detail.html',
   styleUrl: './incident-detail.css'
 })
@@ -207,6 +209,7 @@ export class WorkshopIncidentDetailComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly http = inject(HttpClient);
   private readonly incidentsService = inject(IncidentsService);
+  private readonly cotizacionesService = inject(CotizacionesService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly apiUrl = `${environment.apiUrl}/incidentes`;
 
@@ -227,6 +230,7 @@ export class WorkshopIncidentDetailComponent implements OnInit, OnDestroy {
   loadingTechnicians = signal(false);
   isProcessing = signal(false);
   success = signal<string | null>(null);
+  linkedCotizacion = signal<CotizacionListItem | null>(null);
 
   ngOnInit(): void {
     const incidentId = this.route.snapshot.paramMap.get('id');
@@ -250,6 +254,7 @@ export class WorkshopIncidentDetailComponent implements OnInit, OnDestroy {
         this.incident.set(mapApiToIncident(response.data));
         this.loading.set(false);
         this.loadIncidentAiAnalysisData(incidentId);
+        this.loadLinkedCotizacion(incidentId);
       },
       error: (err) => {
         console.error('Error loading incident:', err);
@@ -270,6 +275,18 @@ export class WorkshopIncidentDetailComponent implements OnInit, OnDestroy {
         this.latestAiAnalysis.set(null);
         this.aiLoading.set(false);
       }
+    });
+  }
+
+  loadLinkedCotizacion(incidentId: number): void {
+    this.cotizacionesService.getCotizacionesTaller().subscribe({
+      next: (items) => {
+        const linked = items.find(
+          (c: any) => c.incidente_id === incidentId || c['incidente_id'] === incidentId
+        );
+        this.linkedCotizacion.set(linked || null);
+      },
+      error: () => this.linkedCotizacion.set(null),
     });
   }
 
@@ -370,6 +387,17 @@ export class WorkshopIncidentDetailComponent implements OnInit, OnDestroy {
 
   closeImageModal(): void {
     this.selectedImage.set(null);
+  }
+
+  onImageError(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    img.style.display = 'none';
+    if (img.parentElement) {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'image-error-placeholder';
+      placeholder.textContent = 'Imagen no disponible';
+      img.parentElement.appendChild(placeholder);
+    }
   }
 
   openAcceptModal(): void {
