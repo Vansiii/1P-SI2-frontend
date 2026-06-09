@@ -58,6 +58,13 @@
     </div>
   }
 
+  @if (metricsLoading()) {
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <p>Cargando métricas...</p>
+    </div>
+  }
+
   <!-- Stats Grid -->
   <section class="stats-grid" aria-label="Estadísticas principales">
     <article class="stat-card featured">
@@ -70,18 +77,18 @@
         </div>
         <div class="stat-badge">Activo</div>
       </div>
-      <h3 class="stat-title">Asistencia Inmediata</h3>
-      <p class="stat-description">Servicio de geolocalización activo</p>
+      <h3 class="stat-title">Incidentes Activos</h3>
+      <p class="stat-description">Casos en atención actualmente</p>
       <div class="stat-value">
-        <span class="value-number">Buscando</span>
-        <span class="value-label">técnicos cercanos</span>
+        <span class="value-number">{{ activeIncidents() | number }}</span>
+        <span class="value-label">en proceso</span>
       </div>
-      <button class="stat-action primary">
-        <span>Reportar Emergencia</span>
+      <a class="stat-action primary" [routerLink]="isAdmin() ? '/admin/monitoring' : '/workshop/incidents'">
+        <span>{{ isAdmin() ? 'Ver Monitoreo' : 'Ver Incidentes' }}</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 12h14M12 5l7 7-7 7"/>
         </svg>
-      </button>
+      </a>
     </article>
 
     <article class="stat-card">
@@ -93,18 +100,18 @@
           </svg>
         </div>
       </div>
-      <h3 class="stat-title">Emergencias Activas</h3>
-      <p class="stat-description">Casos sin resolver en la zona</p>
+      <h3 class="stat-title">Tiempo de Respuesta</h3>
+      <p class="stat-description">Promedio de asignación</p>
       <div class="stat-value">
-        <span class="value-number">0</span>
-        <span class="value-label">Pendientes</span>
+        <span class="value-number">{{ formatResponseTime() }}</span>
+        <span class="value-label">promedio</span>
       </div>
-      <button class="stat-action secondary">
-        <span>Ver Mapa</span>
+      <a class="stat-action secondary" [routerLink]="isAdmin() ? '/admin/reports' : '/workshop/reports'">
+        <span>Ver Reportes</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 12h14M12 5l7 7-7 7"/>
         </svg>
-      </button>
+      </a>
     </article>
 
     <article class="stat-card">
@@ -119,18 +126,18 @@
           </svg>
         </div>
       </div>
-      <h3 class="stat-title">Historial de Servicios</h3>
-      <p class="stat-description">Atenciones de las últimas 24 hrs</p>
+      <h3 class="stat-title">Completados Hoy</h3>
+      <p class="stat-description">Incidentes resueltos hoy</p>
       <div class="stat-value">
-        <span class="value-number">3</span>
-        <span class="value-label">Finalizadas</span>
+        <span class="value-number">{{ completedToday() | number }}</span>
+        <span class="value-label">finalizados</span>
       </div>
-      <button class="stat-action secondary">
-        <span>Revisar Casos</span>
+      <a class="stat-action secondary" [routerLink]="isAdmin() ? '/admin/monitoring' : '/workshop/incidents'">
+        <span>Ver Detalles</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 12h14M12 5l7 7-7 7"/>
         </svg>
-      </button>
+      </a>
     </article>
   </section>
 

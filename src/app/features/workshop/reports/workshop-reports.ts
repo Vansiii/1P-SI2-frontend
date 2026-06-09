@@ -395,13 +395,12 @@ export class WorkshopReportsComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (data) => {
-          // Fix: the dashboard service returns partial data; remap properly
+          console.log('KPI Dashboard raw response:', JSON.stringify(data));
           if (typeof data === 'object' && data !== null) {
-            // The API wraps in { data: ... } but our pipe maps it already
             this.kpiDashboard.set(data);
           }
         },
-        error: (err) => console.error('Error KPI dashboard:', err)
+        error: (err) => { console.error('Error KPI dashboard:', err); this.isLoading.set(false); }
       });
 
     // Financial

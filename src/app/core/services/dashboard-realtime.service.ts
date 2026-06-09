@@ -174,12 +174,12 @@ export class DashboardRealtimeService {
   private handleMetricsUpdated(event: RealtimeEvent<any>): void {
     const data = event.data || (event as any);
     const newMetrics: DashboardMetrics = {
-      activeIncidents: data.active_incidents,
-      pendingIncidents: data.pending_incidents,
-      completedToday: data.completed_today,
-      activeTechnicians: data.active_technicians,
-      averageResponseTime: data.average_response_time,
-      updatedAt: data.updated_at || event.timestamp
+      activeIncidents: data.active_incidents ?? 0,
+      pendingIncidents: data.pending_incidents ?? 0,
+      completedToday: data.completed_today ?? 0,
+      activeTechnicians: data.active_technicians ?? 0,
+      averageResponseTime: data.average_response_time ?? data.avg_response_time ?? 0,
+      updatedAt: data.updated_at || event.timestamp || new Date().toISOString()
     };
 
     this.metrics.set(newMetrics);
