@@ -10,11 +10,17 @@ export interface RouteRequest {
   dest_lng: number;
 }
 
+export interface RouteGeometry {
+  type: string;
+  coordinates: [number, number][];
+}
+
 export interface RouteResponse {
   distance_km: number;
   duration_minutes: number;
-  route_geometry: string;
+  geometry: RouteGeometry;
   steps?: any[];
+  source?: string;
 }
 
 export interface ETARequest {
@@ -36,15 +42,15 @@ export interface ETAResponse {
   providedIn: 'root'
 })
 export class RoutingService {
-  private baseUrl = `${environment.apiUrl}/api/v1/routing`;
+  private baseUrl = `${environment.apiUrl}/routing`;
 
   constructor(private http: HttpClient) {}
 
   /**
    * Calculate route between two points
    */
-  calculateRoute(request: RouteRequest): Observable<{ data: RouteResponse }> {
-    return this.http.post<{ data: RouteResponse }>(
+  calculateRoute(request: RouteRequest): Observable<RouteResponse> {
+    return this.http.post<RouteResponse>(
       `${this.baseUrl}/calculate-route`,
       request
     );
@@ -53,8 +59,8 @@ export class RoutingService {
   /**
    * Calculate ETA between two points
    */
-  calculateETA(request: ETARequest): Observable<{ data: ETAResponse }> {
-    return this.http.post<{ data: ETAResponse }>(
+  calculateETA(request: ETARequest): Observable<ETAResponse> {
+    return this.http.post<ETAResponse>(
       `${this.baseUrl}/calculate-eta`,
       request
     );

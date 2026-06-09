@@ -52,6 +52,8 @@ export interface LegacyIncident {
     distance_km: number;
     compatibility_score: number;
   } | null;
+  _isTimedOut?: boolean;
+  has_timeout?: boolean;
 }
 
 export type IncidentAiAnalysisStatus =
@@ -404,6 +406,26 @@ export class IncidentsService {
         Object.prototype.hasOwnProperty.call(updatedFields, 'taller_id')
       ) {
         const userWorkshopId = this.toInt(currentUser.workshop_id ?? currentUser.id);
+        // ✅ Modo auto: si el incidente ya estaba en timeout, no remover por cambio de taller_id.
+        // La reasignación en cascada no debe hacer desaparecer el incidente del taller anterior.
+        // Solo se remueve cuando otro taller acepta, llega a sin_taller_disponible, o se cancela.
+        if (incidents[index]._isTimedOut || incidents[index].has_timeout) {
+          console.log(
+            `⏭️ Skipping taller_id removal for incident ${incidentId}: ` +
+            `incident is in auto-mode timeout cascade (_isTimedOut=${incidents[index]._isTimedOut})`
+          );
+          // Actualizar taller_id pero mantener visible
+          const updated = [...incidents];
+          updated[index] = safeIncidentMerge(updated[index], {
+            taller_id: updatedWorkshopId,
+            tecnico_id: null,
+            estado_actual: 'pendiente',
+            estado_label: 'Pendiente',
+            updated_at: data.timestamp || new Date().toISOString()
+          });
+          this.incidentsSubject.next(updated);
+          return;
+        }
         if (!userWorkshopId || updatedWorkshopId !== userWorkshopId) {
           const filtered = incidents.filter(i => i.id !== incidentId);
           this.incidentsSubject.next(filtered);
@@ -868,6 +890,8 @@ export class IncidentsService {
         updated[index] = safeIncidentMerge(updated[index], {
           estado_actual: 'pendiente',
           estado_label: 'Pendiente',
+          _isTimedOut: true,
+          has_timeout: true,
           updated_at: data.timed_out_at || data.timestamp || new Date().toISOString()
         });
         this.incidentsSubject.next(updated);
@@ -1182,13 +1206,33 @@ export class IncidentsService {
         return;
       }
 
+      // ✅ MODO AUTO (reasignación en cascada): NO remover del taller anterior.
+      // El incidente debe seguir visible para el taller que hizo timeout hasta que:
+      // - Sea aceptado por otro taller (handleAssignmentAccepted lo remueve)
+      // - Llegue a sin_taller_disponible (handleIncidentStatusChange lo remueve)
+      // - Sea cancelado (handleIncidentCancelled lo remueve)
+      // En modo manual, la reasignación no pasa por aquí (se maneja en
+      // _return_manual_selection_to_client que publica status_changed).
       if (previousWorkshopId === userWorkshopId && newWorkshopId !== userWorkshopId) {
-        const filtered = this.incidentsSubject.value.filter(i => i.id !== incidentId);
-        this.incidentsSubject.next(filtered);
-        console.log(
-          `Incidente ${incidentId} removido del taller ${userWorkshopId} ` +
-          `(reasignado a taller ${newWorkshopId})`
-        );
+        const incidents = this.incidentsSubject.value;
+        const index = incidents.findIndex(i => i.id === incidentId);
+        if (index !== -1) {
+          const updated = [...incidents];
+          updated[index] = safeIncidentMerge(updated[index], {
+            taller_id: newWorkshopId,
+            tecnico_id: null,
+            estado_actual: 'pendiente',
+            estado_label: 'Pendiente',
+            _isTimedOut: true,
+            has_timeout: true,
+            updated_at: data.timestamp || new Date().toISOString()
+          });
+          this.incidentsSubject.next(updated);
+          console.log(
+            `🔄 Incidente ${incidentId} reasignado de taller ${userWorkshopId} ` +
+            `a taller ${newWorkshopId} — se mantiene visible (modo auto, cascada)`
+          );
+        }
         return;
       }
 
@@ -1210,11 +1254,10 @@ export class IncidentsService {
     const index = incidents.findIndex(i => i.id === incidentId);
 
     if (index !== -1) {
-      // ✅ CORREGIDO: Crear copia del array antes de modificar
       const updated = [...incidents];
       updated[index] = safeIncidentMerge(updated[index], {
         taller_id: newWorkshopId,
-        tecnico_id: null, // Resetear técnico al reasignar
+        tecnico_id: null,
         estado_actual: 'pendiente',
         estado_label: 'Pendiente',
         updated_at: data.timestamp || new Date().toISOString()

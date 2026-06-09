@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import * as L from 'leaflet';
 import { WebSocketService } from '../../core/services/websocket.service';
 import { TrackingService, LocationHistory } from '../../core/services/tracking.service';
+import { RoutingService, RouteGeometry } from '../../core/services/routing.service';
 import { interval } from 'rxjs';
 
 interface Incident {
@@ -522,6 +523,7 @@ interface Workshop {
 export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, OnDestroy {
   private readonly wsService = inject(WebSocketService);
   private readonly trackingService = inject(TrackingService);
+  private readonly routingService = inject(RoutingService);
   private readonly destroyRef = inject(DestroyRef);
 
   @Input() incident!: Incident;
@@ -539,6 +541,13 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
   estimatedDistance?: number;
   estimatedTime?: string;
   legendCollapsed = false;
+
+  // OSRM route state
+  private lastRouteCalcLat = 0;
+  private lastRouteCalcLng = 0;
+  private lastRouteCalcTime = 0;
+  private readonly ROUTE_RECALC_DISTANCE_M = 200;
+  private readonly ROUTE_RECALC_INTERVAL_MS = 30000;
 
   // Signals para el reloj en tiempo real
   currentTime = signal('');
@@ -590,6 +599,7 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
         } else {
           this.addTechnicianMarker(tech.current_latitude, tech.current_longitude);
         }
+        this.recalculateRouteIfNeeded(tech.current_latitude, tech.current_longitude);
         this.fitMapBounds();
       }
     }
@@ -652,11 +662,6 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
         this.technician.current_latitude,
         this.technician.current_longitude
       );
-      
-      // Cargar historial de ubicaciones del técnico
-      if (this.incident.tecnico_id) {
-        this.loadTechnicianHistory();
-      }
     }
 
     // Ajustar vista del mapa
@@ -955,8 +960,8 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
       }
     }
 
-    // Calcular distancia y tiempo estimado
-    this.calculateDistanceAndETA(lat, lng);
+    // Calcular distancia y ruta con OSRM (con throttle como en mobile)
+    this.recalculateRouteIfNeeded(lat, lng);
 
     // Ajustar vista del mapa si autoCenter está habilitado
     if (this.autoCenter) {
@@ -968,22 +973,152 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
     this.addTechnicianMarker(lat, lng);
   }
 
+  private recalculateRouteIfNeeded(techLat: number, techLng: number): void {
+    const now = Date.now();
+    const distMoved = this.haversineDistance(
+      this.lastRouteCalcLat, this.lastRouteCalcLng,
+      techLat, techLng
+    );
+    const timeSinceLastCalc = now - this.lastRouteCalcTime;
+
+    if (distMoved > this.ROUTE_RECALC_DISTANCE_M || timeSinceLastCalc > this.ROUTE_RECALC_INTERVAL_MS) {
+      this.lastRouteCalcLat = techLat;
+      this.lastRouteCalcLng = techLng;
+      this.lastRouteCalcTime = now;
+      this.calculateDistanceAndETA(techLat, techLng);
+    }
+  }
+
+  private haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000;
+    const dLat = this.toRad(lat2 - lat1);
+    const dLng = this.toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
   private calculateDistanceAndETA(techLat: number, techLng: number): void {
-    // Calcular distancia usando fórmula Haversine
-    const R = 6371; // Radio de la Tierra en km
+    if (!this.incident?.latitude || !this.incident?.longitude) return;
+
+    // Llamar a OSRM para obtener ruta real (siguiendo calles)
+    this.routingService.calculateRoute({
+      origin_lat: techLat,
+      origin_lng: techLng,
+      dest_lat: this.incident.latitude,
+      dest_lng: this.incident.longitude,
+    })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (route) => {
+          const hasGeometry = route?.geometry?.coordinates?.length >= 2;
+
+          if (route && route.distance_km > 0) {
+            this.estimatedDistance = route.distance_km;
+
+            // Ajuste de tráfico igual que el mobile:
+            // +25% buffer urbano, +50% en hora pico
+            const adjustedMinutes = this.adjustETA(route.duration_minutes, route.distance_km);
+            const minutes = Math.round(adjustedMinutes);
+            if (minutes < 1) {
+              this.estimatedTime = 'Menos de 1 min';
+            } else if (minutes < 60) {
+              this.estimatedTime = `${minutes} min`;
+            } else {
+              const h = Math.floor(minutes / 60);
+              const m = minutes % 60;
+              this.estimatedTime = `${h} h ${m} min`;
+            }
+
+            if (hasGeometry) {
+              this.drawOSRMRoute(route.geometry);
+              return;
+            }
+          }
+
+          // Fallback: OSRM respondió pero sin geometría válida → Haversine + línea recta
+          this.calculateHaversineETA(techLat, techLng);
+          this.drawFallbackRoute(techLat, techLng);
+        },
+        error: () => {
+          // Fallback: Haversine (línea recta) si OSRM falla
+          this.calculateHaversineETA(techLat, techLng);
+          this.drawFallbackRoute(techLat, techLng);
+        }
+      });
+  }
+
+  private readonly TRAFFIC_BUFFER = 1.25;
+  private readonly RUSH_HOUR_BUFFER = 1.50;
+
+  private adjustETA(baseMinutes: number, distanceKm: number): number {
+    const hour = new Date().getHours();
+    const isRushHour = (hour >= 7 && hour < 9) || (hour >= 17 && hour < 19);
+
+    let adjusted = baseMinutes * this.TRAFFIC_BUFFER;
+
+    if (isRushHour) {
+      adjusted *= this.RUSH_HOUR_BUFFER;
+    }
+
+    return adjusted;
+  }
+
+  private drawOSRMRoute(geometry: RouteGeometry): void {
+    if (!this.map) return;
+
+    // GeoJSON coordinates: [lng, lat] → Leaflet: [lat, lng]
+    const latlngs: L.LatLngExpression[] = geometry.coordinates.map(
+      c => [c[1], c[0]] as L.LatLngExpression
+    );
+
+    if (this.routeLine) {
+      this.routeLine.setLatLngs(latlngs);
+    } else {
+      this.routeLine = L.polyline(latlngs, {
+        color: '#3b82f6',
+        weight: 4,
+        opacity: 0.7,
+      }).addTo(this.map);
+    }
+  }
+
+  private drawFallbackRoute(techLat: number, techLng: number): void {
+    if (!this.map) return;
+
+    const latlngs: L.LatLngExpression[] = [
+      [techLat, techLng],
+      [this.incident.latitude, this.incident.longitude]
+    ];
+
+    if (this.routeLine) {
+      this.routeLine.setLatLngs(latlngs);
+    } else {
+      this.routeLine = L.polyline(latlngs, {
+        color: '#f59e0b',
+        weight: 3,
+        opacity: 0.8,
+        dashArray: '10, 10'
+      }).addTo(this.map);
+    }
+  }
+
+  private calculateHaversineETA(techLat: number, techLng: number): void {
+    const R = 6371;
     const dLat = this.toRad(techLat - this.incident.latitude);
     const dLon = this.toRad(techLng - this.incident.longitude);
-    
-    const a = 
+
+    const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRad(this.incident.latitude)) * 
+      Math.cos(this.toRad(this.incident.latitude)) *
       Math.cos(this.toRad(techLat)) *
       Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
+
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     this.estimatedDistance = R * c;
 
-    // Calcular tiempo estimado (asumiendo 40 km/h promedio)
     const avgSpeed = 40;
     const timeHours = this.estimatedDistance / avgSpeed;
     const timeMinutes = Math.round(timeHours * 60);
@@ -991,11 +1126,11 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
     if (timeMinutes < 1) {
       this.estimatedTime = 'Menos de 1 min';
     } else if (timeMinutes < 60) {
-      this.estimatedTime = `${timeMinutes} min`;
+      this.estimatedTime = `${timeMinutes} min (aprox)`;
     } else {
       const hours = Math.floor(timeMinutes / 60);
       const minutes = timeMinutes % 60;
-      this.estimatedTime = `${hours} h ${minutes} min`;
+      this.estimatedTime = `${hours} h ${minutes} min (aprox)`;
     }
   }
 
@@ -1158,45 +1293,6 @@ export class IncidentMapComponent implements OnInit, AfterViewInit, OnChanges, O
   }
 
   private loadTechnicianHistory(): void {
-    if (!this.incident.tecnico_id) return;
-
-    // Cargar últimas 50 ubicaciones
-    this.trackingService.getTechnicianHistory(
-      this.incident.tecnico_id,
-      undefined,
-      undefined,
-      50
-    )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (history) => {
-          if (history.length > 0) {
-            this.drawRoute(history);
-          }
-        },
-        error: (error) => {
-          console.error('Error loading technician history:', error);
-        }
-      });
-  }
-
-  private drawRoute(history: LocationHistory[]): void {
-    if (!this.map || history.length < 2) return;
-
-    // Crear línea de ruta
-    const latlngs: L.LatLngExpression[] = history
-      .reverse() // Ordenar del más antiguo al más reciente
-      .map(loc => [loc.latitude, loc.longitude]);
-
-    if (this.routeLine) {
-      this.routeLine.setLatLngs(latlngs);
-    } else {
-      this.routeLine = L.polyline(latlngs, {
-        color: '#3b82f6',
-        weight: 3,
-        opacity: 0.6,
-        dashArray: '10, 10'
-      }).addTo(this.map);
-    }
+    // Ya no se usa: la ruta se obtiene vía OSRM en calculateDistanceAndETA
   }
 }
