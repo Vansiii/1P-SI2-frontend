@@ -1,0 +1,136 @@
+<div class="promo-container">
+  <div class="promo-header">
+    <div>
+      <h2 style="margin: 0; font-size: 1.5rem; font-weight: 700; color: #111827;">Campañas y Descuentos</h2>
+      <p style="margin: 0.25rem 0 0 0; font-size: 0.8125rem; color: #6b7280;">Defina cupones y ofertas especiales para incentivar las compras en el marketplace.</p>
+    </div>
+    <button class="btn btn-primary" (click)="openAddModal()">
+      + Crear Campaña
+    </button>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-container">
+      <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">⚙️</div>
+      <span>Cargando ofertas y descuentos...</span>
+    </div>
+  } @else if (loadError()) {
+    <div style="text-align: center; padding: 4rem 1rem; color: #b91c1c; background: #fff; border: 1px solid #e5e7eb; border-radius: 0.75rem;">
+      <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚠️</div>
+      <h4 style="margin: 0; color: #991b1b;">No se pudieron cargar sus campañas</h4>
+      <p style="margin: 0.25rem 0 1rem 0; font-size: 0.8125rem;">{{ loadError() }}</p>
+      <button class="btn btn-primary" (click)="loadPromotions()">Reintentar</button>
+    </div>
+  } @else if (promotions().length === 0) {
+    <div style="text-align: center; padding: 4rem 1rem; color: #9ca3af; background: #fff; border: 1px solid #e5e7eb; border-radius: 0.75rem;">
+      <div style="font-size: 2rem; margin-bottom: 0.5rem;">🏷️</div>
+      <h4 style="margin: 0; color: #374151;">No tiene campañas creadas</h4>
+      <p style="margin: 0.25rem 0 1rem 0; font-size: 0.8125rem;">Cree descuentos por porcentaje o montos fijos para sus repuestos.</p>
+      <button class="btn btn-primary" (click)="openAddModal()">Crear Descuento</button>
+    </div>
+  } @else {
+    <div class="promo-grid">
+      @for (promo of promotions(); track promo.id) {
+        <div class="promo-card">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+            <h3 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #1f2937;">{{ promo.name }}</h3>
+            <span [ngClass]="isPromoActive(promo) ? 'badge-active' : 'badge-expired'" class="badge">
+              {{ isPromoActive(promo) ? 'Activo' : 'Vencido/Pausado' }}
+            </span>
+          </div>
+          
+          <p style="font-size: 0.75rem; color: #6b7280; margin: 0 0 1rem 0; min-height: 2rem;">
+            {{ promo.description || 'Sin descripción especial.' }}
+          </p>
+
+          <div style="background: #f9fafb; border-radius: 0.5rem; padding: 0.5rem; font-size: 0.8125rem; margin-bottom: 1rem;">
+            <div>Tipo: <span style="font-weight: 600;">{{ promo.type === 'percentage' ? 'Porcentaje' : 'Monto fijo' }}</span></div>
+            <div>Descuento: <span style="font-weight: 700; color: #f97316;">
+              {{ promo.type === 'percentage' ? promo.value + '%' : 'Bs. ' + (promo.value | number:'1.2-2') }}
+            </span></div>
+            @if (promo.min_purchase) {
+              <div>Compra Mínima: <span style="font-weight: 500;">Bs. {{ promo.min_purchase | number:'1.2-2' }}</span></div>
+            }
+          </div>
+
+          <div style="font-size: 0.7rem; color: #9ca3af; margin-bottom: 1rem;">
+            <div>Validez: {{ promo.starts_at | date:'shortDate' }} al {{ promo.ends_at | date:'shortDate' }}</div>
+            <div>Usos: {{ promo.current_uses }} @if (promo.max_uses) { / {{ promo.max_uses }} max }</div>
+          </div>
+
+          <div class="actions-cell">
+            <button class="btn btn-sm" (click)="togglePromotionStatus(promo)" [title]="promo.is_active ? 'Pausar campaña' : 'Activar campaña'">
+              <i class="fas" [class.fa-pause]="promo.is_active" [class.fa-play]="!promo.is_active"></i>
+              {{ promo.is_active ? 'Pausar' : 'Activar' }}
+            </button>
+            <button class="btn btn-sm btn-danger" (click)="deletePromotion(promo)" title="Eliminar campaña">
+              <i class="fas fa-trash-alt"></i> Eliminar
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Add Promotion Modal -->
+  @if (showAddModal()) {
+    <div class="modal-overlay">
+      <div class="modal-content" [formGroup]="promoForm">
+        <h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.125rem; font-weight: 700; color: #111827;">Crear Campaña de Descuento</h3>
+        
+        <div class="form-group">
+          <label>Nombre de la Promoción *</label>
+          <input type="text" formControlName="name" placeholder="Ej. Descuento de Invierno" />
+        </div>
+
+        <div class="form-group">
+          <label>Descripción / Condiciones</label>
+          <textarea formControlName="description" rows="2" placeholder="Ej. 10% en filtros de todas las marcas..."></textarea>
+        </div>
+
+        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+          <div>
+            <label>Tipo de Oferta</label>
+            <select formControlName="type">
+              <option value="percentage">Porcentaje (%)</option>
+              <option value="fixed_amount">Monto Fijo (Bs.)</option>
+            </select>
+          </div>
+          <div>
+            <label>Valor de Descuento *</label>
+            <input type="number" formControlName="value" step="0.01" />
+          </div>
+        </div>
+
+        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+          <div>
+            <label>Fecha de Inicio *</label>
+            <input type="datetime-local" formControlName="starts_at" />
+          </div>
+          <div>
+            <label>Fecha de Vencimiento *</label>
+            <input type="datetime-local" formControlName="ends_at" />
+          </div>
+        </div>
+
+        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+          <div>
+            <label>Límite de Usos (Opcional)</label>
+            <input type="number" formControlName="max_uses" placeholder="Ej. 100 cupones" />
+          </div>
+          <div>
+            <label>Compra Mínima (Bs.)</label>
+            <input type="number" formControlName="min_purchase" step="0.01" />
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem;">
+          <button class="btn" (click)="showAddModal.set(false)" [disabled]="submitLoading()">Cancelar</button>
+          <button class="btn btn-primary" (click)="submitPromo()" [disabled]="promoForm.invalid || submitLoading()">
+            {{ submitLoading() ? 'Creando...' : 'Crear Campaña' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

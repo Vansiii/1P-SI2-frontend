@@ -158,6 +158,42 @@ export const routes: Routes = [
       {
         path: 'cotizaciones/:id',
         loadComponent: () => import('./features/workshop/cotizacion-detalle/cotizacion-detalle').then(m => m.CotizacionDetalleComponent)
+      },
+      {
+        path: 'suppliers',
+        loadComponent: () => import('./features/workshop/suppliers-list/suppliers-list.component').then(m => m.SuppliersListComponent)
+      },
+      {
+        path: 'inventory',
+        loadComponent: () => import('./features/workshop/inventory-list/inventory-list.component').then(m => m.InventoryListComponent)
+      },
+      {
+        path: 'inventory/new',
+        loadComponent: () => import('./features/workshop/inventory-form/inventory-form.component').then(m => m.InventoryFormComponent)
+      },
+      {
+        path: 'inventory/movements',
+        loadComponent: () => import('./features/workshop/inventory-movements/inventory-movements.component').then(m => m.InventoryMovementsComponent)
+      },
+      {
+        path: 'inventory/:id',
+        loadComponent: () => import('./features/workshop/inventory-detail/inventory-detail.component').then(m => m.InventoryDetailComponent)
+      },
+      {
+        path: 'inventory/:id/edit',
+        loadComponent: () => import('./features/workshop/inventory-form/inventory-form.component').then(m => m.InventoryFormComponent)
+      },
+      {
+        path: 'marketplace/products',
+        loadComponent: () => import('./features/workshop/marketplace-products/marketplace-products.component').then(m => m.MarketplaceProductsComponent)
+      },
+      {
+        path: 'marketplace/publish',
+        loadComponent: () => import('./features/workshop/publish-product/publish-product.component').then(m => m.PublishProductComponent)
+      },
+      {
+        path: 'promotions',
+        loadComponent: () => import('./features/workshop/promotions-manager/promotions-manager.component').then(m => m.PromotionsManagerComponent)
       }
     ]
   },
@@ -183,6 +219,41 @@ export const routes: Routes = [
       {
         path: 'incident/:id',
         loadComponent: () => import('./features/tracking/incident-tracking-view.component').then(m => m.IncidentTrackingViewComponent)
+      }
+    ]
+  },
+  {
+    path: 'marketplace',
+    canActivate: [authGuard],
+    component: PrivateShellComponent,
+    children: [
+      {
+        path: 'browse',
+        loadComponent: () => import('./features/marketplace/browse/marketplace-browse.component').then(m => m.MarketplaceBrowseComponent)
+      },
+      {
+        path: 'listing/:id',
+        loadComponent: () => import('./features/marketplace/product-detail/product-detail.component').then(m => m.ProductDetailComponent)
+      },
+      {
+        path: 'cart',
+        loadComponent: () => import('./features/marketplace/cart/cart.component').then(m => m.CartComponent)
+      },
+      {
+        path: 'checkout',
+        loadComponent: () => import('./features/marketplace/checkout/checkout.component').then(m => m.CheckoutComponent)
+      },
+      {
+        path: 'my-purchases',
+        loadComponent: () => import('./features/marketplace/order-history/order-history.component').then(m => m.OrderHistoryComponent)
+      },
+      {
+        path: 'order/:id',
+        loadComponent: () => import('./features/marketplace/order-detail/order-detail.component').then(m => m.OrderDetailComponent)
+      },
+      {
+        path: 'compare',
+        loadComponent: () => import('./features/marketplace/product-compare/product-compare.component').then(m => m.ProductCompareComponent)
       }
     ]
   },

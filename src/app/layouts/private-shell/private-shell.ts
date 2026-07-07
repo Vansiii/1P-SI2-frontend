@@ -59,6 +59,11 @@ export class PrivateShellComponent {
     return userType === 'workshop';
   });
 
+  readonly isClient = computed(() => {
+    const userType = this.user()?.user_type ?? '';
+    return userType === 'client';
+  });
+
   toggleSidebar(): void {
     this.sidebarOpen.set(!this.sidebarOpen());
   }

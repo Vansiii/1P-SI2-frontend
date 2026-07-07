@@ -1,0 +1,327 @@
+<div class="inventory-container">
+  <!-- Header -->
+  <div class="inventory-header">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Inventario del Taller</h1>
+      <p class="text-sm text-gray-500 mt-1">Controla el stock de repuestos, registra entradas/salidas y visualiza alertas de bajo stock.</p>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+      <a routerLink="movements" class="btn"><i class="fas fa-history mr-1"></i> Historial</a>
+      <a routerLink="new" class="btn btn-primary"><i class="fas fa-plus mr-1"></i> Nuevo Producto</a>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-icon bg-kpi-blue">
+        <i class="fas fa-boxes"></i>
+      </div>
+      <div>
+        <div class="kpi-label">Productos Activos</div>
+        <div class="kpi-val">{{ kpis().total_products }}</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon bg-kpi-orange">
+        <i class="fas fa-exclamation-triangle"></i>
+      </div>
+      <div>
+        <div class="kpi-label">Bajo Stock</div>
+        <div class="kpi-val">{{ kpis().low_stock_count }}</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon bg-kpi-red">
+        <i class="fas fa-times-circle"></i>
+      </div>
+      <div>
+        <div class="kpi-label">Agotados</div>
+        <div class="kpi-val">{{ kpis().out_of_stock_count }}</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon bg-kpi-green">
+        <i class="fas fa-dollar-sign"></i>
+      </div>
+      <div>
+        <div class="kpi-label">Valor Total</div>
+        <div class="kpi-val">{{ kpis().total_value | currency:'BOB ':'symbol':'1.2-2' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alerta Offline -->
+  <div *ngIf="!connectivity.isOnline()" class="alert alert-warning">
+    <strong>Modo Offline:</strong> Estás visualizando datos cacheados. Las operaciones de stock se sincronizarán al recuperar la conexión.
+  </div>
+
+  <!-- Filters Card -->
+  <div class="filters-card">
+    <div class="filters-grid">
+      <div class="filter-group">
+        <label>Buscar Producto</label>
+        <input 
+          type="text" 
+          placeholder="Nombre, SKU, marca..." 
+          class="filter-input"
+          [value]="filters.search()"
+          (input)="filters.search.set($any($event.target).value); filters.page.set(1)"
+        />
+      </div>
+
+      <div class="filter-group">
+        <label>Categoría</label>
+        <select 
+          class="filter-input" 
+          [value]="filters.category_id() || ''"
+          (change)="filters.category_id.set($any($event.target).value ? +$any($event.target).value : null); filters.page.set(1)"
+        >
+          <option value="">Todas las categorías</option>
+          <option *ngFor="let cat of categories()" [value]="cat.id">{{ cat.name }}</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label>Proveedor</label>
+        <select 
+          class="filter-input"
+          [value]="filters.supplier_id() || ''"
+          (change)="filters.supplier_id.set($any($event.target).value ? +$any($event.target).value : null); filters.page.set(1)"
+        >
+          <option value="">Todos los proveedores</option>
+          <option *ngFor="let sup of suppliers()" [value]="sup.id">{{ sup.name }}</option>
+        </select>
+      </div>
+
+      <div class="filter-group" style="flex-direction: row; align-items: center; gap: 1.5rem; margin-top: 1.25rem;">
+        <label style="display: inline-flex; align-items: center; cursor: pointer; font-size: 0.8125rem;">
+          <input 
+            type="checkbox" 
+            style="margin-right: 0.35rem;"
+            [checked]="filters.low_stock()" 
+            (change)="filters.low_stock.set($any($event.target).checked ? true : null); filters.page.set(1)"
+          />
+          Bajo Stock
+        </label>
+        
+        <label style="display: inline-flex; align-items: center; cursor: pointer; font-size: 0.8125rem;">
+          <input 
+            type="checkbox" 
+            style="margin-right: 0.35rem;"
+            [checked]="filters.out_of_stock()" 
+            (change)="filters.out_of_stock.set($any($event.target).checked ? true : null); filters.page.set(1)"
+          />
+          Agotados
+        </label>
+      </div>
+
+      <div class="filter-group" style="align-items: flex-end; justify-content: flex-end;">
+        <button class="btn btn-sm" (click)="resetFilters()">
+          <i class="fas fa-undo mr-1"></i> Limpiar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading()" class="loading-container">
+    <i class="fas fa-spinner fa-spin fa-2x"></i>
+    <p class="mt-2 text-sm">Cargando inventario...</p>
+  </div>
+
+  <!-- Product Table -->
+  <div *ngIf="!loading() && products().length > 0" class="inventory-table-card">
+    <div class="table-scroll">
+    <table class="inventory-table">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Nombre del Producto</th>
+          <th>Categoría</th>
+          <th>Proveedor</th>
+          <th>Costo (Pond.)</th>
+          <th>Ubicación</th>
+          <th>Stock Actual</th>
+          <th>Alerta</th>
+          <th style="width: 380px;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr 
+          *ngFor="let product of products()" 
+          [class.low-stock-row]="product.current_stock > 0 && product.current_stock <= product.min_stock"
+          [class.out-stock-row]="product.current_stock === 0"
+        >
+          <td>
+            <span class="sku-code">{{ product.sku || 'S/N' }}</span>
+          </td>
+          <td>
+            <div class="font-semibold text-gray-900">{{ product.name }}</div>
+            <div class="text-xs text-gray-400" *ngIf="product.brand">{{ product.brand }} | {{ product.part_number || 'N/A' }}</div>
+          </td>
+          <td>{{ product.category_name || '-' }}</td>
+          <td>{{ product.supplier_name || '-' }}</td>
+          <td>
+            <div>{{ product.cost_price | currency:'BOB ':'symbol':'1.2-2' }}</div>
+            <div class="text-xs text-gray-400">Prom: {{ product.avg_cost_price | currency:'BOB ':'symbol':'1.2-2' }}</div>
+          </td>
+          <td>{{ product.location || '-' }}</td>
+          <td>
+            <strong class="text-gray-900">{{ product.current_stock }}</strong> 
+            <span class="text-xs text-gray-400 ml-1">{{ product.unit }}s</span>
+          </td>
+          <td>
+            <span 
+              *ngIf="product.current_stock === 0" 
+              class="badge badge-danger"
+            >
+              Agotado
+            </span>
+            <span 
+              *ngIf="product.current_stock > 0 && product.current_stock <= product.min_stock" 
+              class="badge badge-warning"
+            >
+              Bajo Stock (mín: {{ product.min_stock }})
+            </span>
+            <span 
+              *ngIf="product.current_stock > product.min_stock" 
+              class="badge badge-success"
+            >
+              Suficiente
+            </span>
+          </td>
+          <td>
+            <div class="actions-cell">
+              <button class="btn btn-sm btn-primary" (click)="openMovement(product)" title="Registrar Entrada/Salida">
+                <i class="fas fa-exchange-alt"></i> Stock
+              </button>
+              <a [routerLink]="[product.id]" class="btn btn-sm" title="Detalle y Movimientos">
+                <i class="fas fa-eye text-blue-600"></i> Ver
+              </a>
+              <a [routerLink]="[product.id, 'edit']" class="btn btn-sm" title="Editar ficha">
+                <i class="fas fa-edit"></i> Editar
+              </a>
+              <a
+                *ngIf="!product.is_published"
+                [routerLink]="['/workshop/marketplace/publish']"
+                [queryParams]="{ productId: product.id }"
+                class="btn btn-sm btn-publish"
+                title="Publicar este repuesto en el Marketplace"
+              >
+                <i class="fas fa-store"></i> Publicar
+              </a>
+              <button
+                *ngIf="product.is_published"
+                class="btn btn-sm btn-unpublish"
+                (click)="unpublishProduct(product)"
+                [disabled]="unpublishingId() === product.id"
+                title="Retirar este repuesto del Marketplace"
+              >
+                <i class="fas" [class.fa-check-circle]="unpublishingId() !== product.id" [class.fa-spinner]="unpublishingId() === product.id" [class.fa-spin]="unpublishingId() === product.id"></i>
+                {{ unpublishingId() === product.id ? 'Retirando...' : 'Publicado' }}
+              </button>
+              <button class="btn btn-sm btn-danger" (click)="deleteProduct(product.id)" title="Eliminar ficha">
+                <i class="fas fa-trash-alt"></i> Eliminar
+              </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!loading() && products().length === 0" class="empty-state">
+    <i class="fas fa-boxes fa-3x text-gray-300 mb-3"></i>
+    <h3>No se encontraron productos</h3>
+    <p class="text-sm text-gray-500 mt-1">
+      {{ filters.search() ? 'Intenta ajustando los términos de búsqueda o limpiando los filtros.' : 'Comienza a poblar tu almacén agregando un producto.' }}
+    </p>
+    <button *ngIf="!filters.search()" routerLink="new" class="btn btn-primary mt-4">
+      Agregar Producto
+    </button>
+  </div>
+
+  <!-- Pagination -->
+  <div class="pagination" *ngIf="totalPages() > 1">
+    <div class="text-sm text-gray-500">
+      Mostrando del <strong>{{ (filters.page() - 1) * filters.size() + 1 }}</strong> al 
+      <strong>{{ filters.page() * filters.size() > totalProducts() ? totalProducts() : filters.page() * filters.size() }}</strong> 
+      de <strong>{{ totalProducts() }}</strong> productos
+    </div>
+    <div class="pagination-pages">
+      <button class="page-btn" [disabled]="!hasPrev()" (click)="changePage(filters.page() - 1)">Ant</button>
+      <button 
+        *ngFor="let p of [].constructor(totalPages()); let idx = index" 
+        class="page-btn" 
+        [class.active]="idx + 1 === filters.page()"
+        (click)="changePage(idx + 1)"
+      >
+        {{ idx + 1 }}
+      </button>
+      <button class="page-btn" [disabled]="!hasNext()" (click)="changePage(filters.page() + 1)">Sig</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Movimiento de Stock -->
+<div *ngIf="showMovementModal()" class="dialog-overlay" (click)="showMovementModal.set(false)">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <h2>Registrar Movimiento de Almacén</h2>
+    <p class="text-xs text-gray-500 mb-3" *ngIf="movementProduct()">
+      Producto: <strong>{{ movementProduct()?.name }}</strong> | SKU: <code>{{ movementProduct()?.sku || 'S/N' }}</code> | Stock actual: <strong>{{ movementProduct()?.current_stock }} {{ movementProduct()?.unit }}s</strong>
+    </p>
+
+    <div *ngIf="movementError()" class="alert alert-error">
+      {{ movementError() }}
+    </div>
+
+    <form [formGroup]="movementForm" (ngSubmit)="onSubmitMovement()">
+      <div class="form-group">
+        <label>Tipo de Operación *</label>
+        <select formControlName="type">
+          <option value="entrada">Entrada (Compra/Reabastecimiento)</option>
+          <option value="salida">Salida (Consumo/Descarte/Ajuste)</option>
+          <option value="ajuste">Ajuste de Auditoría (Salida)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Cantidad *</label>
+        <input type="number" formControlName="quantity" min="1" />
+      </div>
+
+      <!-- Costo Unitario (Solo para entradas) -->
+      <div class="form-group" *ngIf="movementForm.get('type')?.value === 'entrada'">
+        <label>Costo de Compra Unitario (BOB) *</label>
+        <input type="number" formControlName="unit_cost" step="0.01" min="0" placeholder="Ej: 15.50" />
+        <span class="text-xs text-gray-400 mt-1 block">Este costo revalorizará el Costo Promedio Ponderado del producto en stock.</span>
+      </div>
+
+      <div class="form-group">
+        <label>Referencia / Origen</label>
+        <select formControlName="reference_type">
+          <option value="ajuste_manual">Ajuste Manual</option>
+          <option value="compra">Orden de Compra / Proveedor</option>
+          <option value="incidente">Asociado a Emergencia / Trabajo</option>
+          <option value="devolucion">Devolución de Técnico</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Notas / Justificación</label>
+        <textarea formControlName="notes" rows="2" placeholder="Describe brevemente el motivo del movimiento (Ej: Factura #101, Orden #234)."></textarea>
+      </div>
+
+      <div class="dialog-footer">
+        <button type="button" class="btn" (click)="showMovementModal.set(false)" [disabled]="movementLoading()">Cancelar</button>
+        <button type="submit" class="btn btn-primary" [disabled]="movementForm.invalid || movementLoading() || !connectivity.isOnline()">
+          <span *ngIf="movementLoading()"><i class="fas fa-spinner fa-spin mr-1"></i> Registrando...</span>
+          <span *ngIf="!movementLoading()">Registrar Movimiento</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

@@ -225,6 +225,86 @@
             </div>
             <span>Mi Suscripcion</span>
           </a>
+
+          <!-- Inventario de Repuestos (CU34) -->
+          <a routerLink="/workshop/inventory" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+            <div class="nav-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+            </div>
+            <span>Mi Inventario</span>
+          </a>
+
+          <!-- Proveedores (CU34) -->
+          <a routerLink="/workshop/suppliers" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+            <div class="nav-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H10a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/>
+                <path d="M6 6H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2"/>
+                <path d="M18 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"/>
+              </svg>
+            </div>
+            <span>Proveedores</span>
+          </a>
+
+          <!-- Publicaciones Marketplace (CU35) -->
+          <a routerLink="/workshop/marketplace/products" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+            <div class="nav-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+              </svg>
+            </div>
+            <span>Mis Publicaciones</span>
+          </a>
+
+          <!-- Promociones y Cupones (CU35) -->
+          <a routerLink="/workshop/promotions" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+            <div class="nav-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="5" x2="5" y2="19"/>
+                <circle cx="6.5" cy="6.5" r="2.5"/>
+                <circle cx="17.5" cy="17.5" r="2.5"/>
+              </svg>
+            </div>
+            <span>Mis Descuentos</span>
+          </a>
+        }
+
+        <!-- Client Marketplace links (CU35) -->
+        @if (isClient()) {
+          <a routerLink="/marketplace/browse" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+            <div class="nav-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </div>
+            <span>Comprar Repuestos</span>
+          </a>
+
+          <a routerLink="/marketplace/cart" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+            <div class="nav-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="9" cy="21" r="1"/>
+                <circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+            </div>
+            <span>Mi Carrito</span>
+          </a>
+
+          <a routerLink="/marketplace/my-purchases" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+            <div class="nav-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
+                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+              </svg>
+            </div>
+            <span>Mis Compras</span>
+          </a>
         }
         
         <div class="nav-item disabled" aria-disabled="true">

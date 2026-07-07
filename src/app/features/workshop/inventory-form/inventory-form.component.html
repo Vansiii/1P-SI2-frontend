@@ -1,0 +1,207 @@
+<div class="form-container">
+  <!-- Header -->
+  <div class="form-header">
+    <a routerLink="/workshop/inventory" class="btn btn-sm">
+      <i class="fas fa-arrow-left"></i> Volver
+    </a>
+    <h1 class="text-xl font-bold text-gray-900">
+      {{ formMode() === 'create' ? 'Registrar Producto de Almacén' : 'Editar Producto de Almacén' }}
+    </h1>
+  </div>
+
+  <div *ngIf="loading()" class="card text-center" style="padding: 3rem;">
+    <i class="fas fa-spinner fa-spin fa-2x text-gray-400"></i>
+    <p class="mt-2 text-sm text-gray-500">Cargando datos del producto...</p>
+  </div>
+
+  <!-- Form Card -->
+  <div *ngIf="!loading()" class="card">
+    <div *ngIf="error()" class="alert alert-error">
+      {{ error() }}
+    </div>
+
+    <form [formGroup]="productForm" (ngSubmit)="onSubmit()">
+      <div class="form-grid">
+        <!-- Nombre -->
+        <div class="form-group full-width">
+          <label>Nombre del Repuesto / Producto *</label>
+          <input type="text" formControlName="name" placeholder="Ej: Pastillas de Freno Delanteras Ceramic" />
+          <span *ngIf="productForm.get('name')?.touched && productForm.get('name')?.invalid" class="text-xs text-red-600">
+            El nombre es requerido (máx. 300 caracteres).
+          </span>
+        </div>
+
+        <!-- SKU y Barcode -->
+        <div class="form-group">
+          <label>SKU / Código Único Interno</label>
+          <input type="text" formControlName="sku" placeholder="Ej: BRK-TY-001" />
+        </div>
+        <div class="form-group">
+          <label>Código de Barras (Universal)</label>
+          <input type="text" formControlName="barcode" placeholder="Ej: 750102030405" />
+        </div>
+
+        <!-- Marca y Nro de Parte -->
+        <div class="form-group">
+          <label>Marca Fabricante</label>
+          <input type="text" formControlName="brand" placeholder="Ej: Bosch" />
+        </div>
+        <div class="form-group">
+          <label>Número de Parte OEM</label>
+          <input type="text" formControlName="part_number" placeholder="Ej: 04465-0K290" />
+        </div>
+
+        <!-- Categoria y Proveedor -->
+        <div class="form-group">
+          <label>Categoría de Almacén</label>
+          <select formControlName="category_id">
+            <option [value]="null">Sin categoría</option>
+            <option *ngFor="let cat of categories()" [value]="cat.id">{{ cat.name }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Proveedor Recomendado</label>
+          <select formControlName="supplier_id">
+            <option [value]="null">Sin proveedor</option>
+            <option *ngFor="let sup of suppliers()" [value]="sup.id">{{ sup.name }}</option>
+          </select>
+        </div>
+
+        <!-- Costo y Unidad -->
+        <div class="form-group">
+          <label>Costo de Compra Unitario (BOB) *</label>
+          <input type="number" formControlName="cost_price" step="0.01" min="0" placeholder="Ej: 120.00" />
+          <span *ngIf="productForm.get('cost_price')?.touched && productForm.get('cost_price')?.invalid" class="text-xs text-red-600">
+            El costo es requerido y debe ser >= 0.
+          </span>
+        </div>
+        <div class="form-group">
+          <label>Unidad de Medida *</label>
+          <input type="text" formControlName="unit" placeholder="Ej: unidad, set, litro..." />
+        </div>
+
+        <!-- Stocks -->
+        <div class="form-group">
+          <label>Stock Inicial *</label>
+          <input type="number" formControlName="current_stock" min="0" />
+          <span class="text-xs text-gray-400 block mt-1" *ngIf="formMode() === 'edit'">
+            El stock se modifica registrando movimientos de entrada/salida.
+          </span>
+        </div>
+        <div class="form-group">
+          <label>Stock Mínimo (Alerta) *</label>
+          <input type="number" formControlName="min_stock" min="0" />
+        </div>
+
+        <!-- Ubicación y Max Stock -->
+        <div class="form-group">
+          <label>Ubicación en Almacén</label>
+          <input type="text" formControlName="location" placeholder="Ej: Estante A, Fila 3" />
+        </div>
+        <div class="form-group">
+          <label>Stock Máximo de Control</label>
+          <input type="number" formControlName="max_stock" min="0" placeholder="Opcional" />
+        </div>
+
+        <!-- Compatibilidad Vehicular (JSON tags) -->
+        <div class="form-group full-width" style="border-top: 1px solid #f3f4f6; padding-top: 1rem;">
+          <h3 class="text-sm font-semibold text-gray-900 mb-2">Compatibilidad Vehicular</h3>
+          <label style="display: inline-flex; align-items: center; cursor: pointer; margin-bottom: 1rem;">
+            <input type="checkbox" formControlName="universal" style="width: auto; margin-right: 0.5rem;" />
+            Este repuesto es Universal (Aplica para cualquier vehículo)
+          </label>
+
+          <div *ngIf="!productForm.get('universal')?.value" class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <!-- Marcas Compatibles -->
+            <div>
+              <label class="text-xs font-semibold text-gray-600">Marcas de Vehículos Compatibles</label>
+              <div class="add-tag-box">
+                <input 
+                  type="text" 
+                  class="add-tag-input" 
+                  placeholder="Ej: Toyota" 
+                  [value]="brandInput()"
+                  (input)="brandInput.set($any($event.target).value)"
+                  (keydown.enter)="$event.preventDefault(); addBrand()"
+                />
+                <button type="button" class="btn btn-sm btn-primary" (click)="addBrand()">Agregar</button>
+              </div>
+              <div class="tags-container">
+                <span class="tag" *ngFor="let brand of compatibleBrands()">
+                  {{ brand }}
+                  <i class="fas fa-times" (click)="removeBrand(brand)"></i>
+                </span>
+                <span *ngIf="compatibleBrands().length === 0" class="text-xs text-gray-400 mt-1 block">Sin marcas agregadas.</span>
+              </div>
+            </div>
+
+            <!-- Modelos Compatibles -->
+            <div>
+              <label class="text-xs font-semibold text-gray-600">Modelos de Vehículos Compatibles</label>
+              <div class="add-tag-box">
+                <input 
+                  type="text" 
+                  class="add-tag-input" 
+                  placeholder="Ej: Hilux" 
+                  [value]="modelInput()"
+                  (input)="modelInput.set($any($event.target).value)"
+                  (keydown.enter)="$event.preventDefault(); addModel()"
+                />
+                <button type="button" class="btn btn-sm btn-primary" (click)="addModel()">Agregar</button>
+              </div>
+              <div class="tags-container">
+                <span class="tag" *ngFor="let model of compatibleModels()">
+                  {{ model }}
+                  <i class="fas fa-times" (click)="removeModel(model)"></i>
+                </span>
+                <span *ngIf="compatibleModels().length === 0" class="text-xs text-gray-400 mt-1 block">Sin modelos agregados.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Image Upload -->
+        <div class="form-group full-width" style="border-top: 1px solid #f3f4f6; padding-top: 1rem;">
+          <label>Imagen del Repuesto</label>
+
+          <div *ngIf="uploadError()" class="alert alert-error" style="margin-bottom: 0.75rem;">
+            {{ uploadError() }}
+          </div>
+
+          <div class="image-upload-area">
+            <div *ngIf="imagePreview(); else noPreview" class="image-preview-container">
+              <img [src]="imagePreview()" alt="Vista previa" class="image-preview" />
+              <div *ngIf="isUploadingImage()" class="upload-overlay">
+                <div class="spinner"></div>
+                <p>Subiendo imagen...</p>
+              </div>
+              <button type="button" class="btn-remove-image" (click)="removeImage()" [disabled]="isUploadingImage()" title="Quitar imagen">
+                &times;
+              </button>
+            </div>
+            <ng-template #noPreview>
+              <label class="image-upload-label">
+                <input type="file" accept="image/*" class="image-input" (change)="onImageSelected($event)" />
+                <i class="fas fa-cloud-upload-alt" style="font-size: 1.5rem; color: #9ca3af;"></i>
+                <p class="upload-text">Haz clic para subir una imagen desde tu dispositivo</p>
+                <p class="upload-hint">PNG, JPG o WEBP hasta 5MB</p>
+              </label>
+            </ng-template>
+          </div>
+
+          <div class="upload-divider">o pega una URL directamente</div>
+          <input type="text" formControlName="image_url" placeholder="Ej: https://supabase.storage.url/repuesto.jpg" />
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="form-actions">
+        <button type="button" routerLink="/workshop/inventory" class="btn" [disabled]="submitLoading()">Cancelar</button>
+        <button type="submit" class="btn btn-primary" [disabled]="productForm.invalid || submitLoading() || !connectivity.isOnline()">
+          <span *ngIf="submitLoading()"><i class="fas fa-spinner fa-spin mr-1"></i> Guardando...</span>
+          <span *ngIf="!submitLoading()">{{ formMode() === 'create' ? 'Registrar Producto' : 'Guardar Cambios' }}</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

@@ -1,47 +1,49 @@
-import { HttpInterceptorFn, HttpErrorResponse, HttpRequest, HttpHandlerFn } from '@angular/common/http';
+import { HttpInterceptorFn, HttpErrorResponse, HttpRequest, HttpHandlerFn, HttpEvent } from '@angular/common/http';
 import { inject } from '@angular/core';
-import { catchError, switchMap, throwError } from 'rxjs';
+import { catchError, switchMap, throwError, Observable, Subject, filter, take } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { environment } from '../../../environments/environment';
 
 let isRefreshing = false;
+let refreshSubject: Subject<string | null> | null = null;
 
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const authService = inject(AuthService);
   const http = inject(HttpClient);
   const accessToken = authService.getAccessToken();
 
-  console.log(`🌐 HTTP Request: ${request.method} ${request.url}`);
-
-  // Si no hay token, continuar sin autorización
   if (!accessToken) {
-    console.log('⚠️ No access token available for request');
     return next(request).pipe(
       catchError((error) => {
-        logError(error);
+        _logError(error);
         return throwError(() => error);
       })
     );
   }
 
-  console.log('✅ Adding Authorization header to request');
-
-  // Agregar token a la petición
   const authorizedRequest = request.clone({
-    setHeaders: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+    setHeaders: { Authorization: `Bearer ${accessToken}` },
   });
 
   return next(authorizedRequest).pipe(
     catchError((error: HttpErrorResponse) => {
-      logError(error);
+      _logError(error);
 
-      if (error.status === 401 && !request.url.includes('/tokens/refresh') && !isRefreshing) {
-        console.log('🔄 Received 401, attempting token refresh...');
-        return handleTokenRefresh(request, next, authService, http);
+      if (error.status === 401 && !request.url.includes('/tokens/refresh')) {
+        if (!isRefreshing) {
+          return handleTokenRefresh(request, next, authService, http);
+        }
+        return refreshSubject!.pipe(
+          filter((token): token is string => token !== null),
+          take(1),
+          switchMap((newToken) => {
+            return next(request.clone({
+              setHeaders: { Authorization: `Bearer ${newToken}` },
+            }));
+          })
+        );
       }
 
       if (error.status === 403) {
@@ -53,8 +55,6 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
           router.navigate(['/account-suspended']);
         } else if (detail.includes('cancelada') || detail.includes('cancelado')) {
           router.navigate(['/account-suspended']);
-        } else if (detail.includes('plan') || detail.includes('funcionalidad')) {
-          // Plan doesn't include this feature — just pass through the error
         }
       }
 
@@ -68,67 +68,64 @@ function handleTokenRefresh(
   next: HttpHandlerFn,
   authService: AuthService,
   http: HttpClient
-) {
+): Observable<HttpEvent<any>> {
   isRefreshing = true;
+  refreshSubject = new Subject<string | null>();
+
   const refreshToken = authService.getRefreshToken();
 
   if (!refreshToken) {
-    isRefreshing = false;
-    console.log('🔴 No refresh token available, redirecting to login');
+    _finishRefresh(null);
     authService.clearSessionAndRedirect();
     return throwError(() => new Error('No refresh token available'));
   }
-
-  console.log('🔄 Attempting to refresh token...');
 
   return http.post<any>(`${environment.apiUrl}/tokens/refresh`, {
     refresh_token: refreshToken
   }).pipe(
     switchMap((response) => {
-      isRefreshing = false;
-      console.log('✅ Token refreshed successfully');
+      const newAccessToken = response.data?.tokens?.access_token
+        || response.data?.access_token
+        || response.access_token;
+      const newRefreshToken = response.data?.tokens?.refresh_token
+        || response.data?.refresh_token
+        || response.refresh_token;
 
-      // Extraer tokens de la respuesta
-      const newAccessToken = response.data?.tokens?.access_token || response.data?.access_token || response.access_token;
-      const newRefreshToken = response.data?.tokens?.refresh_token || response.data?.refresh_token || response.refresh_token;
-      
       if (newAccessToken) {
-        // Actualizar tokens en el servicio (esto actualiza signals y localStorage)
         authService.updateTokens(newAccessToken, newRefreshToken || refreshToken);
-        
-        // Reintentar la petición original con el nuevo token
-        const retryRequest = request.clone({
-          setHeaders: {
-            Authorization: `Bearer ${newAccessToken}`,
-          },
-        });
-        
-        return next(retryRequest);
+        _finishRefresh(newAccessToken);
+        return next(request.clone({
+          setHeaders: { Authorization: `Bearer ${newAccessToken}` },
+        }));
       }
 
-      console.error('❌ No access token in refresh response');
+      _finishRefresh(null);
       authService.clearSessionAndRedirect();
       return throwError(() => new Error('No access token in refresh response'));
     }),
     catchError((error) => {
-      isRefreshing = false;
-      console.log('❌ Token refresh failed, redirecting to login');
+      _finishRefresh(null);
       authService.clearSessionAndRedirect();
       return throwError(() => error);
     })
   );
 }
 
-function logError(error: any) {
-  if (error instanceof HttpErrorResponse) {
-    console.log('🔴 HTTP Error Response:', {
-      status: error.status,
-      statusText: error.statusText,
-      url: error.url,
-      error: error.error,
-      message: error.message,
-    });
-  } else {
-    console.log('🔴 Unknown Error:', error);
+function _finishRefresh(token: string | null): void {
+  isRefreshing = false;
+  if (refreshSubject) {
+    if (token) {
+      refreshSubject.next(token);
+    }
+    refreshSubject.complete();
+    refreshSubject = null;
+  }
+}
+
+function _logError(error: any): void {
+  if (!environment.production) {
+    if (error instanceof HttpErrorResponse) {
+      console.warn(`[Auth] ${error.status} ${error.url} — ${error.message}`);
+    }
   }
 }

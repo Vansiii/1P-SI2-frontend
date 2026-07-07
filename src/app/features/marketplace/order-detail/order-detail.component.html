@@ -1,0 +1,136 @@
+<div class="detail-container">
+  <div style="margin-bottom: 1rem;">
+    <a [routerLink]="['/marketplace/my-purchases']" style="font-size: 0.8125rem; color: #f97316; text-decoration: none; font-weight: 500;">
+      ← Volver a Mis Compras
+    </a>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-container">
+      <span>Cargando detalle de su compra...</span>
+    </div>
+  } @else if (order()) {
+    <div class="card">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; border-bottom: 1px solid #f3f4f6; padding-bottom: 0.75rem;">
+        <div>
+          <h2 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: #111827;">Compra {{ order()?.order_number }}</h2>
+          <span style="font-size: 0.75rem; color: #6b7280;">Realizado el: {{ order()?.created_at | date:'medium' }}</span>
+        </div>
+        <span [ngClass]="{
+          'badge-paid': order()?.status === 'paid' || order()?.status === 'confirmed',
+          'badge-pending': order()?.status === 'pending_payment',
+          'badge-preparing': order()?.status === 'preparing',
+          'badge-ready': order()?.status === 'ready_pickup' || order()?.status === 'shipped',
+          'badge-cancelled': order()?.status === 'cancelled' || order()?.status === 'refunded'
+        }" class="badge">
+          {{ translateStatus(order()!.status) }}
+        </span>
+      </div>
+
+      <!-- Seller Details -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; font-size: 0.8125rem;">
+        <div>
+          <h4 style="margin: 0 0 0.35rem 0; font-size: 0.8125rem; color: #374151; font-weight: 700;">Taller Vendedor</h4>
+          <div style="font-weight: 600; color: #111827;">{{ order()?.workshop_name }}</div>
+          @if (order()?.workshop_phone) {
+            <div style="color: #6b7280; margin-top: 0.15rem;">Contacto: {{ order()?.workshop_phone }}</div>
+          }
+        </div>
+        <div>
+          <h4 style="margin: 0 0 0.35rem 0; font-size: 0.8125rem; color: #374151; font-weight: 700;">Detalles de Entrega</h4>
+          <div style="color: #4b5563;">Tipo: <span style="font-weight: 600;">{{ order()?.delivery_type === 'pickup' ? 'Retiro en Taller' : 'Envío a Domicilio' }}</span></div>
+          @if (order()?.delivery_type === 'shipping' && order()?.delivery_address) {
+            <div style="color: #6b7280; font-style: italic; margin-top: 0.15rem;">Dir: {{ order()?.delivery_address }}</div>
+          }
+        </div>
+      </div>
+
+      <!-- Timeline Tracking -->
+      <h3 style="font-size: 0.875rem; margin: 1.5rem 0 0.5rem 0; font-weight: 700; color: #111827;">Estado del Envío / Entrega</h3>
+      <div class="timeline">
+        <!-- Node 1: Created -->
+        <div class="timeline-item">
+          <div class="timeline-node timeline-node-active"></div>
+          <div>
+            <strong>Pedido Realizado</strong>
+            <div style="color:#6b7280; font-size:0.75rem;">Su orden ha sido registrada en el sistema.</div>
+          </div>
+        </div>
+
+        <!-- Node 2: Paid -->
+        <div class="timeline-item">
+          <div class="timeline-node" [class.timeline-node-active]="order()?.status !== 'pending_payment'"></div>
+          <div>
+            <strong>Pago Confirmado</strong>
+            <div style="color:#6b7280; font-size:0.75rem;">
+              {{ order()?.paid_at ? 'Pago procesado con Stripe el ' + (order()?.paid_at | date:'short') : 'Esperando procesamiento de pago.' }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Node 3: Ready / Shipped -->
+        <div class="timeline-item">
+          <div class="timeline-node" [class.timeline-node-active]="order()?.status === 'ready_pickup' || order()?.status === 'shipped' || order()?.status === 'delivered' || order()?.status === 'completed'"></div>
+          <div>
+            <strong>Listo para Entrega / Despachado</strong>
+            <div style="color:#6b7280; font-size:0.75rem;">
+              {{ order()?.ready_at ? 'El taller marcó su repuesto listo el ' + (order()?.ready_at | date:'short') : 'El taller está preparando su repuesto.' }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Node 4: Delivered -->
+        <div class="timeline-item">
+          <div class="timeline-node" [class.timeline-node-active]="order()?.status === 'delivered' || order()?.status === 'completed'"></div>
+          <div>
+            <strong>Entregado</strong>
+            <div style="color:#6b7280; font-size:0.75rem;">
+              {{ order()?.delivered_at ? 'Recibido el ' + (order()?.delivered_at | date:'short') : 'Pendiente de entrega final.' }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Items Grid -->
+      <h3 style="font-size: 0.875rem; margin: 2rem 0 0.5rem 0; font-weight: 700; color: #111827;">Lista de Repuestos</h3>
+      <ul class="items-list">
+        @for (item of order()?.items; track item.id) {
+          <li class="item-row">
+            <div>
+              <div style="font-weight: 600; color: #111827; font-size: 0.8125rem;" [routerLink]="['/marketplace/listing', item.listing_id]" style="cursor:pointer; text-decoration:underline;">
+                {{ item.product_name }}
+              </div>
+              <div style="font-size: 0.75rem; color: #6b7280;">
+                Marca: {{ item.product_brand || '-' }} | SKU: {{ item.product_sku || '-' }}
+              </div>
+            </div>
+            <div style="text-align: right; font-size: 0.8125rem;">
+              <div style="font-weight: 600; color: #4b5563;">{{ item.quantity }} x Bs. {{ item.unit_price | number:'1.2-2' }}</div>
+              <div style="font-weight: 700; color: #f97316; font-size: 0.875rem;">Bs. {{ item.total_price | number:'1.2-2' }}</div>
+            </div>
+          </li>
+        }
+      </ul>
+
+      <!-- Summary calculations -->
+      <div style="border-top: 1px solid #f3f4f6; margin-top: 1.5rem; padding-top: 1rem; font-size: 0.8125rem; display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-end;">
+        <div style="color: #4b5563;">Subtotal: <span style="font-weight: 600; color: #111827;">Bs. {{ order()?.subtotal | number:'1.2-2' }}</span></div>
+        @if (order()?.shipping_cost) {
+          <div style="color: #4b5563;">Envío: <span style="font-weight: 600; color: #111827;">Bs. {{ order()?.shipping_cost | number:'1.2-2' }}</span></div>
+        }
+        <div style="font-size: 1rem; font-weight: 700; color: #f97316; border-top: 1px solid #e5e7eb; padding-top: 0.5rem; margin-top: 0.25rem; width: 200px; text-align: right;">
+          Total Pagado: Bs. {{ order()?.total | number:'1.2-2' }}
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      @if (order()?.status === 'pending_payment' || order()?.status === 'paid' || order()?.status === 'confirmed') {
+        <div style="margin-top: 1.5rem; border-top: 1px solid #f3f4f6; padding-top: 1rem; display: flex; justify-content: flex-end;">
+          <button class="btn btn-danger" (click)="cancelOrder()" [disabled]="cancelLoading()">
+            Solicitar Cancelación
+          </button>
+        </div>
+      }
+    </div>
+  }
+</div>

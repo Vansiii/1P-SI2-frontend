@@ -24,4 +24,5 @@ export interface Environment {
     measurementId?: string;
   };
   firebaseVapidKey?: string;
+  stripePublishableKey?: string;
 }

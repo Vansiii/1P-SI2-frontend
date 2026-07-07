@@ -1,0 +1,146 @@
+<div class="browse-container">
+  <!-- Filters Sidebar -->
+  <aside class="filters-sidebar">
+    <h3 style="margin-top: 0; margin-bottom: 1.25rem; font-size: 1rem; font-weight: 700; color: #111827;">Filtros</h3>
+
+    <!-- Vehicle Compatibility Filter -->
+    <div class="filter-group">
+      <div class="filter-title">Compatibilidad Vehicular</div>
+      <p style="font-size: 0.7rem; color: #6b7280; margin: 0 0 0.5rem 0;">Seleccione su vehículo registrado para ver si el repuesto es compatible:</p>
+      <select (change)="filterVehicle($event)" style="font-size: 0.8125rem; padding: 0.45rem; width: 100%; border: 1px solid #d1d5db; border-radius: 0.375rem;">
+        <option value="">-- Todos los productos --</option>
+        @for (veh of vehicles(); track veh.id; let idx = $index) {
+          <option [value]="idx">{{ veh.marca }} {{ veh.modelo }} ({{ veh.anho }})</option>
+        }
+      </select>
+    </div>
+
+    <!-- Category filter -->
+    <div class="filter-group">
+      <div class="filter-title">Categorías</div>
+      <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.8125rem;">
+        <div style="cursor: pointer;" [style.color]="selectedCategory() === null ? '#f97316' : '#4b5563'" [style.font-weight]="selectedCategory() === null ? '600' : '400'" (click)="filterCategory(null)">
+          Todas las categorías
+        </div>
+        @for (cat of categories(); track cat.id) {
+          <div style="cursor: pointer;" [style.color]="selectedCategory() === cat.id ? '#f97316' : '#4b5563'" [style.font-weight]="selectedCategory() === cat.id ? '600' : '400'" (click)="filterCategory(cat.id)">
+            {{ cat.nombre }}
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Price range filter -->
+    <div class="filter-group">
+      <div class="filter-title">Rango de Precios</div>
+      <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <input type="number" placeholder="Min" style="width: 70px; padding: 0.25rem; font-size: 0.8125rem;" [(ngModel)]="minPrice" />
+        <span style="color: #9ca3af;">-</span>
+        <input type="number" placeholder="Max" style="width: 70px; padding: 0.25rem; font-size: 0.8125rem;" [(ngModel)]="maxPrice" />
+      </div>
+      <button class="btn btn-sm" style="margin-top: 0.5rem; width: 100%;" (click)="loadListings()">Aplicar Precios</button>
+    </div>
+
+    <!-- Compare Button floating banner if comparing -->
+    @if (compareIds().length > 0) {
+      <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px dashed #d1d5db; text-align: center;">
+        <div style="font-size: 0.75rem; color: #4b5563; font-weight: 600; margin-bottom: 0.5rem;">
+          Tiene {{ compareIds().length }} repuesto(s) seleccionados para comparar.
+        </div>
+        <button class="btn btn-primary btn-sm" style="width: 100%;" [routerLink]="['/marketplace/compare']" [queryParams]="{ ids: compareIds().join(',') }">
+          Comparar Ahora
+        </button>
+      </div>
+    }
+  </aside>
+
+  <!-- Products Main Grid -->
+  <main class="catalog-main">
+    <div class="search-bar">
+      <input type="text" class="search-input" placeholder="Buscar repuestos por nombre, marca o nro de parte..." (input)="onSearch($event)" />
+      
+      <select (change)="setSort($event)" style="font-size: 0.8125rem; border: 1px solid #d1d5db; border-radius: 0.375rem; padding: 0 0.5rem;">
+        <option value="newest">Más recientes</option>
+        <option value="price_asc">Precio: de menor a mayor</option>
+        <option value="price_desc">Precio: de mayor a menor</option>
+        <option value="rating">Mejor calificados</option>
+      </select>
+    </div>
+
+    @if (loading()) {
+      <div class="loading-container">
+        <span>Buscando repuestos disponibles en su zona...</span>
+      </div>
+    } @else if (listings().length === 0) {
+      <div style="text-align: center; padding: 6rem 1rem; color: #9ca3af; background: #fff; border: 1px solid #e5e7eb; border-radius: 0.75rem;">
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">⚙️</div>
+        <h4 style="margin: 0; color: #374151;">No se encontraron repuestos</h4>
+        <p style="margin: 0.25rem 0 0 0; font-size: 0.8125rem;">Intente ajustando los filtros de búsqueda o compatibilidad vehicular.</p>
+      </div>
+    } @else {
+      <div class="grid">
+        @for (item of listings(); track item.id) {
+          <div class="product-card">
+            @if (item.product_image_url) {
+              <img [src]="item.product_image_url" alt="" class="product-img" />
+            } @else {
+              <div class="product-img" style="display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: #9ca3af;">⚙️</div>
+            }
+
+            <div class="product-info">
+              <!-- Compatibility check badge -->
+              <div style="margin-bottom: 0.35rem;">
+                @if (item.universal) {
+                  <span class="badge badge-universal">Universal</span>
+                } @else if (selectedVehicle() && isCompatible(item)) {
+                  <span class="badge badge-compatible">Compatible</span>
+                } @else if (selectedVehicle()) {
+                  <span class="badge badge-incompatible" style="background:#fee2e2; color:#b91c1c;">Incompatible</span>
+                } @else {
+                  <span class="badge badge-incompatible">Revisar Compatib.</span>
+                }
+              </div>
+
+              <!-- Title & Brand -->
+              <h4 style="margin: 0; font-size: 0.85rem; font-weight: 700; color: #1f2937; line-height: 1.2; height: 2.4rem; overflow: hidden;" [routerLink]="['/marketplace/listing', item.id]">
+                {{ item.title || item.product_name }}
+              </h4>
+              <span style="font-size: 0.7rem; color: #9ca3af; display: block; margin-top: 0.15rem;">
+                Marca: {{ item.product_brand || 'Genérico' }}
+              </span>
+
+              <!-- Rating stars -->
+              <div style="display: flex; align-items: center; gap: 0.25rem; margin-top: 0.35rem; font-size: 0.7rem; color: #f59e0b;">
+                <span>★</span>
+                <span style="font-weight: 600; color: #4b5563;">{{ item.avg_rating | number:'1.1-1' }}</span>
+                <span style="color: #9ca3af;">({{ item.review_count }})</span>
+              </div>
+
+              <!-- Price & seller -->
+              <div style="margin-top: auto; padding-top: 0.5rem; display: flex; align-items: flex-end; justify-content: space-between;">
+                <div>
+                  <span style="font-size: 0.75rem; color: #9ca3af; display: block; line-height: 1;">Vendedor</span>
+                  <span style="font-size: 0.7rem; font-weight: 600; color: #4b5563; display: block; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {{ item.workshop_name }}
+                  </span>
+                </div>
+                <div style="text-align: right;">
+                  <span style="font-weight: 800; color: #f97316; font-size: 1rem;">Bs. {{ item.public_price | number:'1.2-2' }}</span>
+                </div>
+              </div>
+
+              <!-- Actions compare checkbox -->
+              <div style="display: flex; gap: 0.35rem; margin-top: 0.75rem; border-top: 1px solid #f3f4f6; padding-top: 0.5rem; align-items: center; justify-content: space-between;">
+                <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; color: #6b7280; cursor: pointer; user-select: none;">
+                  <input type="checkbox" [checked]="isComparing(item.id)" (change)="toggleCompare(item.id)" />
+                  <span>Comparar</span>
+                </label>
+                <button class="btn btn-sm btn-primary" style="padding: 0.2rem 0.6rem; font-size: 0.75rem;" [routerLink]="['/marketplace/listing', item.id]">Ver</button>
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </main>
+</div>

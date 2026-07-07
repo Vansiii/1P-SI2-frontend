@@ -1,0 +1,200 @@
+<div class="suppliers-container">
+  <div class="suppliers-header">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Proveedores de Repuestos</h1>
+      <p class="text-sm text-gray-500 mt-1">Gestiona los contactos de distribuidores e importadoras de repuestos del taller.</p>
+    </div>
+    <button class="btn btn-primary" (click)="openCreate()">
+      <i class="fas fa-plus mr-1"></i> Nuevo Proveedor
+    </button>
+  </div>
+
+  <!-- Alerta de Conectividad/Error -->
+  <div *ngIf="error()" class="alert alert-error">
+    {{ error() }}
+  </div>
+  <div *ngIf="!connectivity.isOnline()" class="alert alert-warning">
+    <strong>Modo Offline:</strong> Las acciones de registro y modificación están limitadas hasta recuperar conexión.
+  </div>
+
+  <!-- Barra de Filtros -->
+  <div class="suppliers-header" style="margin-bottom: 1rem;">
+    <div class="search-bar">
+      <input 
+        type="text" 
+        placeholder="Buscar por nombre, NIT, contacto..." 
+        class="search-input" 
+        [value]="searchQuery()" 
+        (input)="searchQuery.set($any($event.target).value)"
+      />
+    </div>
+    <div class="text-sm text-gray-500">
+      Total: <strong>{{ suppliers().length }}</strong> proveedores
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading()" class="loading-container">
+    <i class="fas fa-spinner fa-spin fa-2x"></i>
+    <p class="mt-2 text-sm">Cargando proveedores...</p>
+  </div>
+
+  <!-- Tabla de Proveedores -->
+  <div *ngIf="!loading() && filteredSuppliers().length > 0" class="suppliers-table-card">
+    <div class="table-scroll">
+    <table class="suppliers-table">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Contacto</th>
+          <th>Teléfono / Email</th>
+          <th>Ciudad / País</th>
+          <th>NIT</th>
+          <th>Estado</th>
+          <th>Notas</th>
+          <th style="width: 260px;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let supplier of filteredSuppliers()" [class.opacity-60]="!supplier.is_active">
+          <td>
+            <div class="font-semibold text-gray-900">{{ supplier.name }}</div>
+            <div class="text-xs text-gray-500">{{ supplier.address }}</div>
+          </td>
+          <td>{{ supplier.contact_name || '-' }}</td>
+          <td>
+            <div>{{ supplier.phone || '-' }}</div>
+            <div class="text-xs text-gray-400">{{ supplier.email }}</div>
+          </td>
+          <td>{{ supplier.city ? supplier.city + ', ' + supplier.country : supplier.country }}</td>
+          <td>
+            <code class="text-xs px-1 bg-gray-100 rounded text-gray-700 font-mono">{{ supplier.tax_id || '-' }}</code>
+          </td>
+          <td>
+            <span class="badge" [class.badge-active]="supplier.is_active" [class.badge-inactive]="!supplier.is_active">
+              {{ supplier.is_active ? 'Activo' : 'Inactivo' }}
+            </span>
+          </td>
+          <td>
+            <div class="supplier-notes" [title]="supplier.notes || ''">
+              {{ supplier.notes || '-' }}
+            </div>
+          </td>
+          <td>
+            <div class="actions-cell">
+              <button class="btn btn-sm" (click)="openEdit(supplier)" title="Editar">
+                <i class="fas fa-edit text-blue-600"></i> Editar
+              </button>
+              <button
+                class="btn btn-sm"
+                (click)="toggleActive(supplier)"
+                [title]="supplier.is_active ? 'Desactivar' : 'Activar'"
+              >
+                <i class="fas" [class.fa-ban]="supplier.is_active" [class.fa-check-circle]="!supplier.is_active" [class.text-amber-500]="supplier.is_active" [class.text-green-500]="!supplier.is_active"></i>
+                {{ supplier.is_active ? 'Desactivar' : 'Activar' }}
+              </button>
+              <button class="btn btn-sm btn-danger" (click)="deleteSupplier(supplier.id)" title="Eliminar definitivamente">
+                <i class="fas fa-trash-alt"></i> Eliminar
+              </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!loading() && filteredSuppliers().length === 0" class="empty-state">
+    <i class="fas fa-address-book fa-3x text-gray-300 mb-3"></i>
+    <h3>No se encontraron proveedores</h3>
+    <p class="text-sm text-gray-500 mt-1">
+      {{ searchQuery() ? 'Prueba refinando la búsqueda o limpiando el filtro.' : 'Empieza agregando tu primer proveedor de repuestos.' }}
+    </p>
+    <button *ngIf="!searchQuery()" class="btn btn-primary mt-4" (click)="openCreate()">
+      Nuevo Proveedor
+    </button>
+  </div>
+</div>
+
+<!-- Modal Dialog Form -->
+<div *ngIf="showForm()" class="dialog-overlay" (click)="showForm.set(false)">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <h2>{{ formMode() === 'create' ? 'Agregar Nuevo Proveedor' : 'Editar Proveedor' }}</h2>
+
+    <div *ngIf="formError()" class="alert alert-error">
+      {{ formError() }}
+    </div>
+
+    <form [formGroup]="supplierForm" (ngSubmit)="onSubmit()">
+      <div class="form-group">
+        <label>Nombre Comercial *</label>
+        <input type="text" formControlName="name" placeholder="Ej: Importadora El Condor" />
+        <span *ngIf="supplierForm.get('name')?.touched && supplierForm.get('name')?.invalid" class="text-xs text-red-600">
+          El nombre comercial es requerido (máx. 200 caracteres).
+        </span>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Nombre de Contacto</label>
+          <input type="text" formControlName="contact_name" placeholder="Ej: Pedro Condori" />
+        </div>
+        <div class="form-group">
+          <label>NIT / Tax ID</label>
+          <input type="text" formControlName="tax_id" placeholder="Ej: 10203040" />
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Teléfono</label>
+          <input type="text" formControlName="phone" placeholder="Ej: 71234567" />
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" formControlName="email" placeholder="Ej: contacto@condor.com" />
+          <span *ngIf="supplierForm.get('email')?.touched && supplierForm.get('email')?.invalid" class="text-xs text-red-600">
+            Formato de email inválido.
+          </span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Dirección Física</label>
+        <input type="text" formControlName="address" placeholder="Ej: Av. Bush #123, Zona central" />
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Ciudad</label>
+          <input type="text" formControlName="city" placeholder="Ej: La Paz" />
+        </div>
+        <div class="form-group">
+          <label>País *</label>
+          <input type="text" formControlName="country" placeholder="Ej: Bolivia" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Notas / Observaciones</label>
+        <textarea formControlName="notes" rows="3" placeholder="Información adicional sobre horarios de entrega, créditos, etc."></textarea>
+      </div>
+
+      <div class="form-group" *ngIf="formMode() === 'edit'">
+        <label style="display: inline-flex; align-items: center; cursor: pointer;">
+          <input type="checkbox" formControlName="is_active" style="width: auto; margin-right: 0.5rem;" />
+          Proveedor Activo
+        </label>
+      </div>
+
+      <div class="dialog-footer">
+        <button type="button" class="btn" (click)="showForm.set(false)" [disabled]="formLoading()">Cancelar</button>
+        <button type="submit" class="btn btn-primary" [disabled]="supplierForm.invalid || formLoading() || !connectivity.isOnline()">
+          <span *ngIf="formLoading()"><i class="fas fa-spinner fa-spin mr-1"></i> Guardando...</span>
+          <span *ngIf="!formLoading()">Guardar</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

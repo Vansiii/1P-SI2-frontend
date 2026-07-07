@@ -25,6 +25,7 @@ if (process.env.NG_APP_API_BASE_URL) {
   config.firebaseAppId = process.env.NG_APP_FIREBASE_APP_ID;
   config.firebaseMeasurementId = process.env.NG_APP_FIREBASE_MEASUREMENT_ID;
   config.firebaseVapidKey = process.env.NG_APP_FIREBASE_VAPID_KEY;
+  config.stripePublishableKey = process.env.NG_APP_STRIPE_PUBLISHABLE_KEY;
   console.log('Usando configuración de variables de entorno (Vercel)');
 } else {
   // Prioridad 2: Archivo .env local
@@ -40,6 +41,7 @@ if (process.env.NG_APP_API_BASE_URL) {
     config.firebaseAppId = envConfig.NG_APP_FIREBASE_APP_ID;
     config.firebaseMeasurementId = envConfig.NG_APP_FIREBASE_MEASUREMENT_ID;
     config.firebaseVapidKey = envConfig.NG_APP_FIREBASE_VAPID_KEY;
+    config.stripePublishableKey = envConfig.NG_APP_STRIPE_PUBLISHABLE_KEY;
     console.log('Usando configuración del archivo .env local');
   }
 }
@@ -90,7 +92,8 @@ export const environment: Environment = {
   },
   
   // VAPID Key para Web Push
-  firebaseVapidKey: '${config.firebaseVapidKey}'` : ''}
+  firebaseVapidKey: '${config.firebaseVapidKey}'` : ''},
+  stripePublishableKey: '${config.stripePublishableKey || ''}'
 };
 `;
 

@@ -1,0 +1,100 @@
+<div class="movements-container">
+  <!-- Header -->
+  <div class="movements-header">
+    <a routerLink="/workshop/inventory" class="btn btn-sm">
+      <i class="fas fa-arrow-left"></i> Volver a Inventario
+    </a>
+    <div>
+      <h1 class="text-xl font-bold text-gray-900">Historial General de Almacén</h1>
+      <p class="text-xs text-gray-500 mt-0.5">Auditoría completa de movimientos de entrada, salida y ajustes en el inventario del taller.</p>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading()" class="loading-container">
+    <i class="fas fa-spinner fa-spin fa-2x text-gray-400"></i>
+    <p class="mt-2 text-sm text-gray-500">Cargando historial...</p>
+  </div>
+
+  <!-- Table Card -->
+  <div *ngIf="!loading() && movements().length > 0" class="history-card">
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th>Fecha/Hora</th>
+          <th>Producto / Repuesto</th>
+          <th>SKU</th>
+          <th>Tipo</th>
+          <th>Cantidad</th>
+          <th>Costo Unitario</th>
+          <th>Costo Total</th>
+          <th>Origen/Referencia</th>
+          <th>Stock Anterior</th>
+          <th>Stock Después</th>
+          <th>Notas / Glosa</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let mov of movements()">
+          <td>{{ mov.created_at | date:'dd/MM/yyyy HH:mm' }}</td>
+          <td>
+            <a [routerLink]="['/workshop/inventory', mov.product_id]" class="font-semibold text-orange-600 hover:underline">
+              {{ mov.product_name }}
+            </a>
+          </td>
+          <td>
+            <span class="sku-code" *ngIf="mov.product_sku">{{ mov.product_sku }}</span>
+            <span *ngIf="!mov.product_sku">-</span>
+          </td>
+          <td>
+            <span class="badge" [class]="'badge-' + mov.type">
+              {{ mov.type | uppercase }}
+            </span>
+          </td>
+          <td>
+            <strong [class.text-green-600]="mov.type === 'entrada' || mov.type === 'devolucion'" [class.text-red-600]="mov.type === 'salida' || mov.type === 'ajuste'">
+              {{ (mov.type === 'entrada' || mov.type === 'devolucion') ? '+' : '' }}{{ mov.quantity }}
+            </strong>
+          </td>
+          <td>{{ mov.unit_cost ? (mov.unit_cost | currency:'BOB ':'symbol':'1.2-2') : '-' }}</td>
+          <td>{{ mov.total_cost ? (mov.total_cost | currency:'BOB ':'symbol':'1.2-2') : '-' }}</td>
+          <td>
+            <code class="text-xs font-mono text-gray-700 bg-gray-100 px-1 rounded">{{ mov.reference_type }}</code>
+          </td>
+          <td>{{ mov.stock_before }}</td>
+          <td><strong>{{ mov.stock_after }}</strong></td>
+          <td class="text-gray-500 italic" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" [title]="mov.notes || ''">
+            {{ mov.notes || '-' }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Pagination -->
+    <div class="pagination" *ngIf="totalPages() > 1">
+      <div class="text-sm text-gray-500">
+        Mostrando del <strong>{{ (page() - 1) * size() + 1 }}</strong> al 
+        <strong>{{ page() * size() > totalMovements() ? totalMovements() : page() * size() }}</strong> 
+        de <strong>{{ totalMovements() }}</strong> movimientos
+      </div>
+      <div class="pagination-pages">
+        <button class="page-btn" [disabled]="!hasPrev()" (click)="changePage(page() - 1)">Ant</button>
+        <button 
+          *ngFor="let p of [].constructor(totalPages()); let idx = index" 
+          class="page-btn" 
+          [class.active]="idx + 1 === page()"
+          (click)="changePage(idx + 1)"
+        >
+          {{ idx + 1 }}
+        </button>
+        <button class="page-btn" [disabled]="!hasNext()" (click)="changePage(page() + 1)">Sig</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!loading() && movements().length === 0" class="history-card text-center py-8 text-gray-400">
+    <i class="fas fa-history fa-3x mb-2 text-gray-200"></i>
+    <p>No se registran movimientos en el historial general de almacén.</p>
+  </div>
+</div>

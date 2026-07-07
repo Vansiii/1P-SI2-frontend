@@ -1,0 +1,99 @@
+<div class="cart-container">
+  @if (loading()) {
+    <div class="loading-container">
+      <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🛒</div>
+      <span>Cargando carrito de compras...</span>
+    </div>
+  } @else if (!cart() || cart()?.items?.length === 0) {
+    <div style="grid-column: 1 / -1; text-align: center; padding: 6rem 1rem; color: #9ca3af; background: #fff; border: 1px solid #e5e7eb; border-radius: 0.75rem;">
+      <div style="font-size: 3rem; margin-bottom: 0.5rem;">🛒</div>
+      <h3 style="margin: 0; color: #374151;">Su carrito de compras está vacío</h3>
+      <p style="margin: 0.25rem 0 1.5rem 0; font-size: 0.8125rem;">Navegue por el catálogo de repuestos y agregue productos.</p>
+      <button class="btn btn-primary" style="width: auto;" [routerLink]="['/marketplace/browse']">Explorar Marketplace</button>
+    </div>
+  } @else {
+    <!-- Cart Main Items list -->
+    <main class="cart-main">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; border-bottom: 1px solid #f3f4f6; padding-bottom: 0.75rem;">
+        <h2 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: #111827;">Carrito de Compras</h2>
+        <button class="btn" style="width: auto; font-size: 0.75rem; padding: 0.25rem 0.5rem;" (click)="clearCart()">Vaciar Carrito</button>
+      </div>
+
+      <!-- Grouped by Seller Workshop -->
+      @for (group of groupedItems(); track group.workshopName) {
+        <div class="workshop-group">
+          <h4 style="margin: 0 0 0.75rem 0; font-size: 0.8125rem; font-weight: 700; color: #374151; display: flex; align-items: center; gap: 0.35rem;">
+            <span>🏢 Vendedor:</span>
+            <span style="color: #f97316;">{{ group.workshopName }}</span>
+          </h4>
+          
+          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            @for (item of group.items; track item.id) {
+              <div style="display: flex; gap: 0.75rem; align-items: center; border-bottom: 1px solid #f9fafb; padding-bottom: 0.75rem;">
+                <!-- Product image -->
+                @if (item.image_url) {
+                  <img [src]="item.image_url" alt="" style="width: 2.5rem; height: 2.5rem; border-radius: 0.375rem; object-fit: cover;" />
+                } @else {
+                  <div style="width: 2.5rem; height: 2.5rem; border-radius: 0.375rem; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 1rem; color: #9ca3af;">⚙️</div>
+                }
+
+                <!-- Title & details -->
+                <div style="flex: 1; font-size: 0.8125rem;">
+                  <div style="font-weight: 600; color: #1f2937;" [routerLink]="['/marketplace/listing', item.listing_id]">{{ item.title }}</div>
+                  <div style="font-size: 0.7rem; color: #9ca3af; margin-top: 0.1rem;">
+                    Marca: {{ item.brand || '-' }} | Unit: Bs. {{ item.unit_price }}
+                  </div>
+                  
+                  <!-- Warning Stock details -->
+                  @if (isItemWarning(item.id)) {
+                    <div style="font-size: 0.7rem; color: #dc2626; font-weight: 600; margin-top: 0.25rem;">
+                      ⚠ {{ isItemWarning(item.id) }}
+                    </div>
+                  }
+                </div>
+
+                <!-- Qty controls -->
+                <div style="display: flex; align-items: center; gap: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; overflow: hidden; padding: 0.15rem;">
+                  <button class="qty-btn" (click)="changeQty(item, -1)">-</button>
+                  <span style="font-size: 0.8125rem; font-weight: 600; min-width: 24px; text-align: center;">{{ item.quantity }}</span>
+                  <button class="qty-btn" (click)="changeQty(item, 1)">+</button>
+                </div>
+
+                <!-- Subtotal and remove -->
+                <div style="text-align: right; min-width: 90px;">
+                  <div style="font-weight: 700; color: #f97316; font-size: 0.9rem;">Bs. {{ item.subtotal | number:'1.2-2' }}</div>
+                  <button style="border: none; background: none; color: #9ca3af; font-size: 0.7rem; cursor: pointer; text-decoration: underline;" (click)="removeItem(item.id)">Eliminar</button>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </main>
+
+    <!-- Order Summary sidebar -->
+    <aside class="checkout-sidebar">
+      <h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 1rem; font-weight: 700; color: #111827;">Resumen de Compra</h3>
+      
+      <div style="font-size: 0.8125rem; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem; border-bottom: 1px solid #f3f4f6; padding-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #6b7280;">Productos ({{ cart()?.total_items }} u.)</span>
+          <span style="font-weight: 600; color: #1f2937;">Bs. {{ cart()?.subtotal_price | number:'1.2-2' }}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #6b7280;">Envíos desglosados</span>
+          <span style="font-weight: 600; color: #1f2937;">Bs. {{ cart()?.shipping_total | number:'1.2-2' }}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.95rem; font-weight: 700; color: #111827; border-top: 1px solid #e5e7eb; padding-top: 0.5rem; margin-top: 0.25rem;">
+          <span>Total Estimado</span>
+          <span style="color: #f97316;">Bs. {{ cart()?.total_price | number:'1.2-2' }}</span>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" (click)="proceedToCheckout()" [disabled]="validationErrors().length > 0">
+        Proceder al Pago
+      </button>
+      <a class="btn" style="margin-top: 0.5rem; text-decoration: none;" [routerLink]="['/marketplace/browse']">Seguir Comprando</a>
+    </aside>
+  }
+</div>

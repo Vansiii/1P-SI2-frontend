@@ -65,4 +65,19 @@ export class UploadService {
       )
       .pipe(map((response) => response.data));
   }
+
+  /**
+   * Subir imagen de producto de inventario
+   */
+  uploadProductImage(file: File): Observable<UploadResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http
+      .post<ApiResponse<UploadResponse>>(
+        `${this.apiUrl}/workshop/inventory/upload/image`,
+        formData
+      )
+      .pipe(map((response) => response.data));
+  }
 }

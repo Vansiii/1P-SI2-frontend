@@ -28,6 +28,7 @@
     "@angular/service-worker": "^21.2.7",
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/outfit": "^5.2.8",
+    "@fortawesome/fontawesome-free": "^7.3.0",
     "@swimlane/ngx-charts": "^23.1.0",
     "chart.js": "^4.5.1",
     "firebase": "^12.12.0",

@@ -391,6 +391,20 @@ img.lazy-error {
   color: var(--info);
 }
 
+/* Utilidades de color puntuales usadas en íconos de acciones (tablas de
+   inventario, proveedores y publicaciones) */
+.text-blue-600 {
+  color: #2563eb;
+}
+
+.text-amber-500 {
+  color: #f59e0b;
+}
+
+.text-green-500 {
+  color: #22c55e;
+}
+
 /* Background Color Classes */
 .bg-priority-alta-subtle {
   background-color: #fee2e2; /* Red 100 */

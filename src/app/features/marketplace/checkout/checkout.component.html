@@ -1,0 +1,132 @@
+<div class="checkout-container">
+  <div style="margin-bottom: 1rem;">
+    <a [routerLink]="['/marketplace/cart']" style="font-size: 0.8125rem; color: #f97316; text-decoration: none; font-weight: 500;">
+      ← Volver al Carrito
+    </a>
+  </div>
+
+  <div class="grid">
+    <!-- Left panel: Forms OR Stripe payment queue -->
+    <div>
+      @if (createdOrders().length === 0) {
+        <!-- Step 1: Delivery details & Checkout confirmation -->
+        <div class="card">
+          <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.25rem; font-weight: 700; color: #111827;">Opciones de Entrega</h2>
+          <p style="margin: 0 0 1.5rem 0; font-size: 0.8125rem; color: #6b7280;">Elija cómo desea recibir sus repuestos.</p>
+
+          <div class="form-group">
+            <label>Tipo de Entrega</label>
+            <select [ngModel]="deliveryType()" (ngModelChange)="deliveryType.set($event)">
+              <option value="pickup">Retiro en persona (Taller del Vendedor)</option>
+              <option value="shipping">Envío a domicilio</option>
+            </select>
+          </div>
+
+          @if (deliveryType() === 'shipping') {
+            <div class="form-group">
+              <label>Dirección Física de Entrega *</label>
+              <input type="text" [ngModel]="deliveryAddress()" (ngModelChange)="deliveryAddress.set($event)" placeholder="Ej. Av. Las Américas, Edificio Los Pinos Apto 4B" />
+            </div>
+          }
+
+          <div class="form-group">
+            <label>Notas para el Vendedor (Opcional)</label>
+            <textarea rows="3" [ngModel]="deliveryNotes()" (ngModelChange)="deliveryNotes.set($event)" placeholder="Ej. Dejar en recepción, llamar antes de salir..."></textarea>
+          </div>
+
+          <button class="btn btn-primary" (click)="onSubmitCheckout()" [disabled]="checkoutLoading()">
+            {{ checkoutLoading() ? 'Generando Pedido...' : 'Confirmar Datos y Continuar al Pago' }}
+          </button>
+        </div>
+      } @else {
+        <!-- Step 2: Payment flow for split orders -->
+        <div class="card" style="border: 2px solid #f97316;">
+          <h2 style="margin-top: 0; margin-bottom: 0.25rem; font-size: 1.25rem; font-weight: 700; color: #f97316;">Pago Seguro con Tarjeta</h2>
+          <p style="margin: 0 0 1.5rem 0; font-size: 0.8125rem; color: #6b7280;">
+            Su compra ha sido dividida en <strong>{{ createdOrders().length }} orden(es)</strong> (una por cada taller vendedor).
+          </p>
+
+          <!-- Current payment details -->
+          <div style="background: #fff7ed; border: 1px solid #ffedd5; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1.5rem; font-size: 0.8125rem;">
+            <div style="font-weight: 700; color: #c2410c; margin-bottom: 0.5rem;">
+              Pagando Orden {{ currentPaymentOrder()?.order_number }}
+            </div>
+            <div style="color: #4b5563;">Vendedor: <span style="font-weight: 600; color: #111827;">{{ currentPaymentOrder()?.workshop_name }}</span></div>
+            <div style="color: #4b5563;">Monto a pagar: <span style="font-weight: 700; color: #f97316; font-size: 1rem;">Bs. {{ currentPaymentOrder()?.total | number:'1.2-2' }}</span></div>
+          </div>
+
+          <!-- Stripe Card Element slot -->
+          <div class="form-group">
+            <label>Tarjeta de Crédito / Débito</label>
+            <div id="card-element"></div>
+            @if (stripeError()) {
+              <div class="stripe-errors">⚠ {{ stripeError() }}</div>
+            }
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; margin-top: 2rem;">
+            <button class="btn" (click)="skipPayment()" [disabled]="paymentLoading()">
+              Pagar después (Omitir)
+            </button>
+            <button class="btn btn-primary" (click)="payCurrentOrder()" [disabled]="paymentLoading() || stripeError() !== null">
+              {{ paymentLoading() ? 'Procesando Pago...' : 'Pagar Ahora' }}
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+
+    <!-- Right panel: Order items list summary -->
+    <div>
+      <div class="card">
+        <h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 0.95rem; font-weight: 700; color: #111827;">Resumen del Pedido</h3>
+        
+        @if (createdOrders().length === 0) {
+          <!-- Items from cart before split -->
+          <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 250px; overflow-y: auto; margin-bottom: 1rem; border-bottom: 1px solid #f3f4f6; padding-bottom: 1rem;">
+            @for (item of cart()?.items; track item.id) {
+              <div class="order-item-summary">
+                <div>
+                  <span style="font-weight: 600; color: #374151;">{{ item.title }}</span>
+                  <div style="font-size: 0.7rem; color: #9ca3af;">Cant: {{ item.quantity }} | Vendedor: {{ item.workshop_name }}</div>
+                </div>
+                <span style="font-weight: 600; color: #111827;">Bs. {{ item.subtotal | number:'1.2-2' }}</span>
+              </div>
+            }
+          </div>
+
+          <div style="font-size: 0.8125rem; display: flex; flex-direction: column; gap: 0.35rem;">
+            <div style="display: flex; justify-content: space-between; color: #4b5563;">
+              <span>Subtotal:</span>
+              <span style="font-weight: 500;">Bs. {{ cart()?.subtotal_price | number:'1.2-2' }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; color: #4b5563;">
+              <span>Envío:</span>
+              <span style="font-weight: 500;">Bs. {{ cart()?.shipping_total | number:'1.2-2' }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.95rem; font-weight: 700; color: #f97316; border-top: 1px solid #e5e7eb; padding-top: 0.5rem; margin-top: 0.25rem;">
+              <span>Total a pagar:</span>
+              <span>Bs. {{ cart()?.total_price | number:'1.2-2' }}</span>
+            </div>
+          </div>
+        } @else {
+          <!-- Order queue details after split -->
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            @for (order of createdOrders(); track order.id; let idx = $index) {
+              <div [style.background]="currentPaymentOrder()?.id === order.id ? '#fff7ed' : '#f9fafb'" 
+                   [style.border-color]="currentPaymentOrder()?.id === order.id ? '#ffedd5' : '#e5e7eb'"
+                   style="border: 1px solid; border-radius: 0.5rem; padding: 0.75rem; font-size: 0.8125rem;">
+                <div style="display: flex; justify-content: space-between; font-weight: 700; color: #374151;">
+                  <span>Orden #{{ idx + 1 }}</span>
+                  <span style="color: #f97316;">Bs. {{ order.total | number:'1.2-2' }}</span>
+                </div>
+                <div style="font-size: 0.75rem; color: #6b7280; margin-top: 0.15rem;">Vendedor: {{ order.workshop_name }}</div>
+                <div style="font-size: 0.7rem; color: #9ca3af; margin-top: 0.1rem;">Nro: {{ order.order_number }}</div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,214 @@
+<div class="detail-container">
+  <!-- Header -->
+  <div class="detail-header">
+    <a routerLink="/workshop/inventory" class="btn btn-sm">
+      <i class="fas fa-arrow-left"></i> Volver a Inventario
+    </a>
+    <div style="display: flex; gap: 0.5rem;" *ngIf="product()">
+      <a [routerLink]="['edit']" class="btn btn-primary">
+        <i class="fas fa-edit mr-1"></i> Editar Producto
+      </a>
+    </div>
+  </div>
+
+  <div *ngIf="error()" class="alert-error">
+    {{ error() }}
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading()" class="loading-container">
+    <i class="fas fa-spinner fa-spin fa-2x text-gray-400"></i>
+    <p class="mt-2 text-sm text-gray-500">Cargando ficha del producto...</p>
+  </div>
+
+  <div *ngIf="!loading() && product()" class="card-layout">
+    <!-- Left Column: Details -->
+    <div class="card">
+      <div class="card-title">Ficha Técnica del Repuesto</div>
+      
+      <div class="field-grid">
+        <div class="field-group full-width" style="grid-column: span 2; margin-bottom: 1.25rem;">
+          <label>Nombre del Producto</label>
+          <div style="font-size: 1.15rem; color: #111827; font-weight: 700;">{{ product()?.name }}</div>
+        </div>
+
+        <div class="field-group">
+          <label>SKU (Código Interno)</label>
+          <div>
+            <span class="sku-code">{{ product()?.sku || 'Sin SKU asignado' }}</span>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label>Código de Barras</label>
+          <div>{{ product()?.barcode || '-' }}</div>
+        </div>
+
+        <div class="field-group">
+          <label>Marca</label>
+          <div>{{ product()?.brand || '-' }}</div>
+        </div>
+
+        <div class="field-group">
+          <label>Nro. de Parte OEM</label>
+          <div>{{ product()?.part_number || '-' }}</div>
+        </div>
+
+        <div class="field-group">
+          <label>Categoría</label>
+          <div>{{ product()?.category_name || 'Sin asignar' }}</div>
+        </div>
+
+        <div class="field-group">
+          <label>Proveedor Sugerido</label>
+          <div>{{ product()?.supplier_name || 'Sin asignar' }}</div>
+        </div>
+      </div>
+
+      <div class="field-group full-width" style="margin-top: 1rem;">
+        <label>Descripción / Observaciones</label>
+        <div class="text-sm text-gray-600 mt-1" style="font-weight: normal; line-height: 1.5;">
+          {{ product()?.description || 'Sin descripción adicional.' }}
+        </div>
+      </div>
+
+      <!-- Compatibilidad -->
+      <div class="field-group full-width" style="margin-top: 1.5rem; border-top: 1px solid #f3f4f6; padding-top: 1rem;">
+        <label style="font-weight: 600;">Vehículos Compatibles</label>
+        
+        <div *ngIf="product()?.universal" class="mt-2 text-sm text-green-700 font-semibold">
+          <i class="fas fa-check-circle mr-1"></i> Repuesto de aplicación Universal
+        </div>
+
+        <div *ngIf="!product()?.universal" class="field-grid" style="margin-top: 0.5rem;">
+          <div>
+            <label class="text-xs text-gray-500">Marcas Compatibles</label>
+            <div class="tag-container">
+              <span class="tag" *ngFor="let brand of product()?.compatible_brands">
+                {{ brand }}
+              </span>
+              <span *ngIf="!product()?.compatible_brands?.length" class="text-xs text-gray-400">Ninguna marca registrada.</span>
+            </div>
+          </div>
+          
+          <div>
+            <label class="text-xs text-gray-500">Modelos Compatibles</label>
+            <div class="tag-container">
+              <span class="tag" *ngFor="let model of product()?.compatible_models">
+                {{ model }}
+              </span>
+              <span *ngIf="!product()?.compatible_models?.length" class="text-xs text-gray-400">Ningún modelo registrado.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Stock Stats -->
+    <div>
+      <!-- Stock Panel -->
+      <div class="card text-center" style="margin-bottom: 1rem; border-color: #f3f4f6;">
+        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Stock Actual</div>
+        <div 
+          class="stock-highlight" 
+          [class.bg-green-soft]="product()!.current_stock > product()!.min_stock"
+          [class.bg-amber-soft]="product()!.current_stock > 0 && product()!.current_stock <= product()!.min_stock"
+          [class.bg-red-soft]="product()!.current_stock === 0"
+        >
+          <div class="stock-val">{{ product()?.current_stock }}</div>
+          <div class="text-sm font-semibold mt-1">{{ product()?.unit }}s</div>
+        </div>
+        
+        <div class="field-grid text-left" style="margin-top: 1rem; font-size: 0.8125rem;">
+          <div>
+            <span class="text-gray-500">Stock Mínimo:</span>
+            <strong class="text-gray-900 block">{{ product()?.min_stock }}</strong>
+          </div>
+          <div>
+            <span class="text-gray-500">Ubicación:</span>
+            <strong class="text-gray-900 block">{{ product()?.location || 'Sin asignar' }}</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Financial Panel -->
+      <div class="card">
+        <div class="card-title" style="font-size: 0.95rem;">Valorización del Stock</div>
+        <div class="field-group">
+          <label>Costo de Última Compra</label>
+          <div class="text-gray-900 font-bold" style="font-size: 1rem;">
+            {{ product()?.cost_price | currency:'BOB ':'symbol':'1.2-2' }}
+          </div>
+        </div>
+        <div class="field-group" style="margin-top: 0.5rem;">
+          <label>Costo Promedio Ponderado</label>
+          <div class="text-gray-900">
+            {{ product()?.avg_cost_price | currency:'BOB ':'symbol':'1.2-2' }}
+          </div>
+        </div>
+        <div class="field-group" style="margin-top: 0.5rem; border-top: 1px dashed #e5e7eb; padding-top: 0.5rem;">
+          <label>Valor Total Estimado en Almacén</label>
+          <div class="text-gray-900 font-bold" style="font-size: 1.1rem; color: #16a34a;">
+            {{ (product()!.current_stock * product()!.cost_price) | currency:'BOB ':'symbol':'1.2-2' }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Historical Movements Table (Bottom area) -->
+  <div *ngIf="!loading() && product()" class="history-card">
+    <div class="card-title">Kardex / Historial de Movimientos de Stock</div>
+
+    <table class="history-table" *ngIf="movements().length > 0">
+      <thead>
+        <tr>
+          <th>Fecha/Hora</th>
+          <th>Tipo</th>
+          <th>Cantidad</th>
+          <th>Costo Unitario</th>
+          <th>Valor Total</th>
+          <th>Origen/Referencia</th>
+          <th>Stock Anterior</th>
+          <th>Stock Resultante</th>
+          <th>Notas / Glosa</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let mov of movements()">
+          <td>{{ mov.created_at | date:'dd/MM/yyyy HH:mm' }}</td>
+          <td>
+            <span class="badge" [class]="'badge-' + mov.type">
+              {{ mov.type | uppercase }}
+            </span>
+          </td>
+          <td>
+            <strong [class.text-green-600]="mov.type === 'entrada' || mov.type === 'devolucion'" [class.text-red-600]="mov.type === 'salida' || mov.type === 'ajuste'">
+              {{ (mov.type === 'entrada' || mov.type === 'devolucion') ? '+' : '' }}{{ mov.quantity }}
+            </strong>
+          </td>
+          <td>{{ mov.unit_cost ? (mov.unit_cost | currency:'BOB ':'symbol':'1.2-2') : '-' }}</td>
+          <td>{{ mov.total_cost ? (mov.total_cost | currency:'BOB ':'symbol':'1.2-2') : '-' }}</td>
+          <td>
+            <code class="text-xs font-mono text-gray-700 bg-gray-100 px-1 rounded">{{ mov.reference_type }}</code>
+          </td>
+          <td>{{ mov.stock_before }}</td>
+          <td><strong>{{ mov.stock_after }}</strong></td>
+          <td class="text-gray-500 italic">{{ mov.notes || '-' }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div *ngIf="movements().length === 0" class="text-center py-4 text-gray-400 text-sm">
+      <i class="fas fa-history fa-2x mb-1 text-gray-200"></i>
+      <p>No se registran movimientos para este producto.</p>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" *ngIf="totalPages() > 1">
+      <button class="page-btn" [disabled]="!hasPrev()" (click)="changePage(page() - 1)">Ant</button>
+      <span class="text-xs text-gray-500 self-center">Página {{ page() }} de {{ totalPages() }}</span>
+      <button class="page-btn" [disabled]="!hasNext()" (click)="changePage(page() + 1)">Sig</button>
+    </div>
+  </div>
+</div>
