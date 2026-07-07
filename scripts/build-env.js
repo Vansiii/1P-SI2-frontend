@@ -63,6 +63,22 @@ console.log(`Production: ${isProduction}`);
 const normalizedApiBaseUrl = config.apiBaseUrl.replace(/\/+$/, '');
 const wsBaseUrl = normalizedApiBaseUrl.replace(/^http/i, 'ws');
 
+// Bloque opcional de Firebase (solo si hay API key configurada)
+const firebaseBlock = config.firebaseApiKey ? `
+  // Firebase Cloud Messaging (Push Notifications)
+  firebase: {
+    apiKey: '${config.firebaseApiKey}',
+    authDomain: '${config.firebaseAuthDomain}',
+    projectId: '${config.firebaseProjectId}',
+    storageBucket: '${config.firebaseStorageBucket}',
+    messagingSenderId: '${config.firebaseMessagingSenderId}',
+    appId: '${config.firebaseAppId}'${config.firebaseMeasurementId ? `,
+    measurementId: '${config.firebaseMeasurementId}'` : ''}
+  },
+
+  // VAPID Key para Web Push
+  firebaseVapidKey: '${config.firebaseVapidKey}',` : '';
+
 // Generar el contenido del archivo environment.ts
 const environmentContent = `// Este archivo es generado automáticamente por scripts/build-env.js
 // NO EDITAR MANUALMENTE - Los cambios se perderán
@@ -78,21 +94,7 @@ export const environment: Environment = {
   enableDebugMode: ${!isProduction},
   appName: 'MecánicoYa',
   appVersion: '1.0.0',
-  httpTimeout: ${isProduction ? 10000 : 30000},
-  ${config.firebaseApiKey ? `
-  // Firebase Cloud Messaging (Push Notifications)
-  firebase: {
-    apiKey: '${config.firebaseApiKey}',
-    authDomain: '${config.firebaseAuthDomain}',
-    projectId: '${config.firebaseProjectId}',
-    storageBucket: '${config.firebaseStorageBucket}',
-    messagingSenderId: '${config.firebaseMessagingSenderId}',
-    appId: '${config.firebaseAppId}'${config.firebaseMeasurementId ? `,
-    measurementId: '${config.firebaseMeasurementId}'` : ''}
-  },
-  
-  // VAPID Key para Web Push
-  firebaseVapidKey: '${config.firebaseVapidKey}'` : ''},
+  httpTimeout: ${isProduction ? 10000 : 30000},${firebaseBlock}
   stripePublishableKey: '${config.stripePublishableKey || ''}'
 };
 `;
